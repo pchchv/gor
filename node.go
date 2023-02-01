@@ -63,4 +63,32 @@ const (
 	ntRegexp                   // /{id:[0-9]+}
 	ntParam                    // /{user}
 	ntCatchAll                 // /api/v1/*
+
+	mSTUB methodTyp = 1 << iota
+	mCONNECT
+	mDELETE
+	mGET
+	mHEAD
+	mOPTIONS
+	mPATCH
+	mPOST
+	mPUT
+	mTRACE
+)
+
+var (
+	mALL = mCONNECT | mDELETE | mGET | mHEAD |
+		mOPTIONS | mPATCH | mPOST | mPUT | mTRACE
+
+	methodMap = map[string]methodTyp{
+		http.MethodConnect: mCONNECT,
+		http.MethodDelete:  mDELETE,
+		http.MethodGet:     mGET,
+		http.MethodHead:    mHEAD,
+		http.MethodOptions: mOPTIONS,
+		http.MethodPatch:   mPATCH,
+		http.MethodPost:    mPOST,
+		http.MethodPut:     mPUT,
+		http.MethodTrace:   mTRACE,
+	}
 )

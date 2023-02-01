@@ -110,6 +110,55 @@ func (mx *Mux) MethodNotAllowedHandler() http.HandlerFunc {
 	return methodNotAllowedHandler
 }
 
+// routeHTTP routes a http.Request through the Mux routing tree to serve the matching handler for a particular http method.
+func (mx *Mux) routeHTTP(w http.ResponseWriter, r *http.Request) {
+	// grab the route context object
+	rctx := r.Context().Value(RouteCtxKey).(*Context)
+
+	// the request routing path
+	routePath := rctx.RoutePath
+	if routePath == "" {
+		if r.URL.RawPath != "" {
+			routePath = r.URL.RawPath
+		} else {
+			routePath = r.URL.Path
+		}
+
+		if routePath == "" {
+			routePath = "/"
+		}
+	}
+
+	// check if method is supported by gor
+	if rctx.RouteMethod == "" {
+		rctx.RouteMethod = r.Method
+	}
+
+	method, ok := methodMap[rctx.RouteMethod]
+	if !ok {
+		mx.MethodNotAllowedHandler().ServeHTTP(w, r)
+		return
+	}
+
+	// find the route
+	if _, _, h := mx.tree.FindRoute(rctx, method, routePath); h != nil {
+		h.ServeHTTP(w, r)
+		return
+	}
+	if rctx.methodNotAllowed {
+		mx.MethodNotAllowedHandler().ServeHTTP(w, r)
+	} else {
+		mx.NotFoundHandler().ServeHTTP(w, r)
+	}
+}
+
+// updateRouteHandler builds a single mux handler, which is a chain of middlewares stack defined by Use() calls,
+// and the tree router (Mux) itself. After this point, no other middleware can be registered in the stack of this Mux.
+// But it is still possible to link additional middlewares through Group() or using the chain of middleware handlers.
+func (mx *Mux) updateRouteHandler() {
+	mx.handler = chain(mx.middlewares, http.HandlerFunc(mx.routeHTTP))
+}
+
 // methodNotAllowedHandler is a helper function to respond with a 405, method not allowed.
 func methodNotAllowedHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(405)
