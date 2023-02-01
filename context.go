@@ -47,6 +47,9 @@ type RouteParams struct {
 	Values []string
 }
 
+// RouteCtxKey is the context.Context key to store the request context.
+var RouteCtxKey = &contextKey{"RouteContext"}
+
 // NewRouteContext returns a new routing Context object.
 func NewRouteContext() *Context {
 	return &Context{}
@@ -60,4 +63,19 @@ func (k *contextKey) String() string {
 func (s *RouteParams) Add(key, value string) {
 	s.Keys = append(s.Keys, key)
 	s.Values = append(s.Values, value)
+}
+
+// Reset a routing context to its initial state.
+func (ctx *Context) Reset() {
+	ctx.Routes = nil
+	ctx.RoutePath = ""
+	ctx.RouteMethod = ""
+	ctx.RoutePatterns = ctx.RoutePatterns[:0]
+	ctx.URLParams.Keys = ctx.URLParams.Keys[:0]
+	ctx.URLParams.Values = ctx.URLParams.Values[:0]
+	ctx.routePattern = ""
+	ctx.routeParams.Keys = ctx.routeParams.Keys[:0]
+	ctx.routeParams.Values = ctx.routeParams.Values[:0]
+	ctx.methodNotAllowed = false
+	ctx.parentCtx = nil
 }
