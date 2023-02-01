@@ -50,11 +50,11 @@ type Route struct {
 }
 
 // endpoints is a mapping of http method constants to handlers for a given route.
-type endpoints map[methodTyp]*endpoint
+type endpoints map[methodType]*endpoint
 
 type nodeType uint8
 
-type methodTyp uint
+type methodType uint
 
 type nodes []*node
 
@@ -64,7 +64,7 @@ const (
 	ntParam                    // /{user}
 	ntCatchAll                 // /api/v1/*
 
-	mSTUB methodTyp = 1 << iota
+	mSTUB methodType = 1 << iota
 	mCONNECT
 	mDELETE
 	mGET
@@ -80,7 +80,7 @@ var (
 	mALL = mCONNECT | mDELETE | mGET | mHEAD |
 		mOPTIONS | mPATCH | mPOST | mPUT | mTRACE
 
-	methodMap = map[string]methodTyp{
+	methodMap = map[string]methodType{
 		http.MethodConnect: mCONNECT,
 		http.MethodDelete:  mDELETE,
 		http.MethodGet:     mGET,
@@ -92,3 +92,54 @@ var (
 		http.MethodTrace:   mTRACE,
 	}
 )
+
+func (n *node) findEdge(ntype nodeType, label byte) *node {
+	nds := n.child[ntype]
+	num := len(nds)
+	idx := 0
+
+	switch ntype {
+	case ntStatic, ntParam, ntRegexp:
+		i, j := 0, num-1
+		for i <= j {
+			idx = i + (j-i)/2
+			if label > nds[idx].label {
+				i = idx + 1
+			} else if label < nds[idx].label {
+				j = idx - 1
+			} else {
+				i = num // breaks cond
+			}
+		}
+		if nds[idx].label != label {
+			return nil
+		}
+
+		return nds[idx]
+	default: // catch all
+		return nds[idx]
+	}
+}
+
+func (ns nodes) findEdge(label byte) *node {
+	num := len(ns)
+	idx := 0
+	i, j := 0, num-1
+
+	for i <= j {
+		idx = i + (j-i)/2
+		if label > ns[idx].label {
+			i = idx + 1
+		} else if label < ns[idx].label {
+			j = idx - 1
+		} else {
+			i = num // breaks cond
+		}
+	}
+
+	if ns[idx].label != label {
+		return nil
+	}
+
+	return ns[idx]
+}
