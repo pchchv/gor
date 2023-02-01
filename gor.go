@@ -5,6 +5,7 @@ import "net/http"
 // Router consisting of basic routing methods, using only the standard net/http.
 type Router interface {
 	http.Handler
+	Routes
 
 	// Use appends one or more middlewares to the Router stack.
 	Use(middlewares ...func(http.Handler) http.Handler)
@@ -53,3 +54,17 @@ type Router interface {
 // Middlewares is a slice of standard middleware handlers
 // with methods to compose middleware chains and http.Handler's.
 type Middlewares []func(http.Handler) http.Handler
+
+// Routes adds two methods for router traversal, which are also
+// used by the `docgen` subpackage to generation documentation for Routers.
+type Routes interface {
+	// Routes returns the routing tree in an easily traversable structure.
+	Routes() []Route
+
+	// Middlewares returns the list of middlewares in use by the router.
+	Middlewares() Middlewares
+
+	// Match searches the routing tree for a handler that matches the method/path -
+	// similar to routing an http request, but without the handler being executed afterwards.
+	Match(rctx *Context, method, path string) bool
+}
