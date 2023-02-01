@@ -1,6 +1,7 @@
 package gor
 
 import (
+	"context"
 	"net/http"
 	"sync"
 )
@@ -51,5 +52,40 @@ func (mx *Mux) NotFoundHandler() http.HandlerFunc {
 	if mx.notFoundHandler != nil {
 		return mx.notFoundHandler
 	}
+
 	return http.NotFound
+}
+
+// ServeHTTP is the only method of the http.Handler interface that
+// makes Mux compatible with the standard library.
+// It uses sync.Pool to get and reuse routing contexts for each request.
+func (mx *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Ensure the mux has some routes defined on the mux
+	if mx.handler == nil {
+		mx.NotFoundHandler().ServeHTTP(w, r)
+		return
+	}
+
+	// Check if the routing context from the parent router already exists.
+	rctx, _ := r.Context().Value(RouteCtxKey).(*Context)
+	if rctx != nil {
+		mx.handler.ServeHTTP(w, r)
+		return
+	}
+
+	// Fetch a RouteContext object from the sync pool and call the computable
+	// mx.handler consisting of mx.middlewares + mx.routeHTTP. When the request is finished,
+	// reset the routing context and put it back in the pool for reuse from another request.
+	rctx = mx.pool.Get().(*Context)
+	rctx.Reset()
+	rctx.Routes = mx
+	rctx.parentCtx = r.Context()
+
+	// r.WithContext() causes 2 allocations and context.WithValue() causes 1 allocation
+	r = r.WithContext(context.WithValue(r.Context(), RouteCtxKey, rctx))
+
+	// Serve the request and after its done
+	// return the request context back to the synchronization pool
+	mx.handler.ServeHTTP(w, r)
+	mx.pool.Put(rctx)
 }
