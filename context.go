@@ -1,5 +1,40 @@
 package gor
 
+import "context"
+
+// Context is the default routing context set on the root node of the
+// request context to track route patterns,
+// URL parameters and optional routing path.
+type Context struct {
+	Routes Routes
+
+	// parentCtx is the parent of this, for use Context as context.Context directly.
+	// This is an optimization that saves 1 allocation.
+	parentCtx context.Context
+
+	// Routing path/method override used during route lookup.
+	RoutePath   string
+	RouteMethod string
+
+	// URLParams are the stack of routeParams captured during the routing lifecycle in the sub-routers stack.
+	URLParams RouteParams
+
+	// Route parameters matched for the current sub-router.
+	// It is intentionally not exported so that it cannot be tampered with.
+	routeParams RouteParams
+
+	// Endpoint routing pattern matching the request URI path or `RoutePath` of the current sub-router.
+	// This value will be updated during the life cycle of the request that passes through the sub-routes stack.
+	routePattern string
+
+	// Routing pattern stack throughout the request lifecycle on all connected routers.
+	// This is a record of all matching patterns in the sub-routers stack.
+	RoutePatterns []string
+
+	// methodNotAllowed hint
+	methodNotAllowed bool
+}
+
 // contextKey is a value to be used with context.WithValue.
 // It is used as a pointer, so it is placed in the interface{} without being selected.
 type contextKey struct {
@@ -10,6 +45,11 @@ type contextKey struct {
 type RouteParams struct {
 	Keys   []string
 	Values []string
+}
+
+// NewRouteContext returns a new routing Context object.
+func NewRouteContext() *Context {
+	return &Context{}
 }
 
 func (k *contextKey) String() string {
