@@ -45,3 +45,11 @@ func NewMux() *Mux {
 
 	return mux
 }
+
+// NotFoundHandler returns the default Mux 404 responder whenever a route cannot be found.
+func (mx *Mux) NotFoundHandler() http.HandlerFunc {
+	if mx.notFoundHandler != nil {
+		return mx.notFoundHandler
+	}
+	return http.NotFound
+}
