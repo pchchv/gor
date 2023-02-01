@@ -42,6 +42,13 @@ type endpoint struct {
 	paramKeys []string
 }
 
+// Route describes the details of a routing handler.
+type Route struct {
+	SubRoutes Routes
+	Handlers  map[string]http.Handler // HTTP method
+	Pattern   string
+}
+
 // endpoints is a mapping of http method constants to handlers for a given route.
 type endpoints map[methodTyp]*endpoint
 
