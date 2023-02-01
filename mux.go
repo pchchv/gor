@@ -101,3 +101,17 @@ func (mx *Mux) Use(middlewares ...func(http.Handler) http.Handler) {
 
 	mx.middlewares = append(mx.middlewares, middlewares...)
 }
+
+// MethodNotAllowedHandler returns the default Mux 405 responder whenever a method cannot be resolved for a route.
+func (mx *Mux) MethodNotAllowedHandler() http.HandlerFunc {
+	if mx.methodNotAllowedHandler != nil {
+		return mx.methodNotAllowedHandler
+	}
+	return methodNotAllowedHandler
+}
+
+// methodNotAllowedHandler is a helper function to respond with a 405, method not allowed.
+func methodNotAllowedHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(405)
+	w.Write(nil)
+}
