@@ -14,6 +14,10 @@ func Chain(middlewares ...func(http.Handler) http.Handler) Middlewares {
 	return Middlewares(middlewares)
 }
 
+func (c *ChainHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	c.chain.ServeHTTP(w, r)
+}
+
 // chain builds a http.Handler composed of an embedded middleware stack and
 // an endpoint handler in the order in which they are passed.
 func chain(middlewares []func(http.Handler) http.Handler, endpoint http.Handler) http.Handler {
