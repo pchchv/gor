@@ -34,3 +34,14 @@ type Mux struct {
 	// as an inline group within another mux.
 	inline bool
 }
+
+// NewMux returns a newly initialized Mux object that implements the Router interface.
+func NewMux() *Mux {
+	mux := &Mux{tree: &node{}, pool: &sync.Pool{}}
+
+	mux.pool.New = func() interface{} {
+		return NewRouteContext()
+	}
+
+	return mux
+}
