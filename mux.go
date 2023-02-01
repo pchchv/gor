@@ -89,3 +89,15 @@ func (mx *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	mx.handler.ServeHTTP(w, r)
 	mx.pool.Put(rctx)
 }
+
+// Use appends a middleware handler to the Mux middleware stack.
+// The middleware stack for any Mux will execute before finding a matching route to a specific handler,
+// which provides opportunity to respond early, change the course of the request execution,
+// or set request-scoped values for the next http.Handler.
+func (mx *Mux) Use(middlewares ...func(http.Handler) http.Handler) {
+	if mx.handler != nil {
+		panic("chi: all middlewares must be defined before routes on a mux")
+	}
+
+	mx.middlewares = append(mx.middlewares, middlewares...)
+}
