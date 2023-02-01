@@ -68,3 +68,8 @@ type Routes interface {
 	// similar to routing an http request, but without the handler being executed afterwards.
 	Match(rctx *Context, method, path string) bool
 }
+
+// NewRouter returns a new Mux object that implements the Router interface.
+func NewRouter() *Mux {
+	return NewMux()
+}
