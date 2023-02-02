@@ -79,3 +79,9 @@ func (ctx *Context) Reset() {
 	ctx.methodNotAllowed = false
 	ctx.parentCtx = nil
 }
+
+// RouteContext returns gor routing Context object from a http.Request Context.
+func RouteContext(ctx context.Context) *Context {
+	val, _ := ctx.Value(RouteCtxKey).(*Context)
+	return val
+}
