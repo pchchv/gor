@@ -127,6 +127,36 @@ func (mx *Mux) MethodNotAllowedHandler() http.HandlerFunc {
 	return methodNotAllowedHandler
 }
 
+// Get adds a route `pattern` that matches a GET http method to execute the `handlerFn` http.HandlerFunc.
+func (mx *Mux) Get(pattern string, handlerFn http.HandlerFunc) {
+	mx.handle(mGET, pattern, handlerFn)
+}
+
+// Delete adds a route `pattern` that matches a DELETE http method to execute the `handlerFn` http.HandlerFunc.
+func (mx *Mux) Delete(pattern string, handlerFn http.HandlerFunc) {
+	mx.handle(mDELETE, pattern, handlerFn)
+}
+
+// Connect adds a route `pattern` that matches a CONNECT http method to execute the `handlerFn` http.HandlerFunc.
+func (mx *Mux) Connect(pattern string, handlerFn http.HandlerFunc) {
+	mx.handle(mCONNECT, pattern, handlerFn)
+}
+
+// Head adds a route `pattern` that matches a HEAD http method to execute the `handlerFn` http.HandlerFunc.
+func (mx *Mux) Head(pattern string, handlerFn http.HandlerFunc) {
+	mx.handle(mHEAD, pattern, handlerFn)
+}
+
+// Options adds a route `pattern` that matches a OPTIONS http method to execute the `handlerFn` http.HandlerFunc.
+func (mx *Mux) Options(pattern string, handlerFn http.HandlerFunc) {
+	mx.handle(mOPTIONS, pattern, handlerFn)
+}
+
+// Patch adds a route `pattern` that matches a PATCH http method to execute the `handlerFn` http.HandlerFunc.
+func (mx *Mux) Patch(pattern string, handlerFn http.HandlerFunc) {
+	mx.handle(mPATCH, pattern, handlerFn)
+}
+
 // Handle adds a `pattern` route matching any http method to execute `handler` http.Handler.
 func (mx *Mux) Handle(pattern string, handler http.Handler) {
 	mx.handle(mALL, pattern, handler)
