@@ -256,6 +256,98 @@ func (n *node) findRoute(rctx *Context, method methodType, path string) *node {
 	return nil
 }
 
+func (n *node) InsertRoute(method methodType, pattern string, handler http.Handler) *node {
+	var parent *node
+	search := pattern
+
+	for {
+		// Handle key exhaustion
+		if len(search) == 0 {
+			// Insert or update the node's leaf handler
+			n.setEndpoint(method, handler, pattern)
+			return n
+		}
+
+		// We're going to be searching for a wild node next,
+		// in this case, we need to get the tail
+		label := search[0]
+		var segTail byte
+		var segEndIdx int
+		var segType nodeType
+		var segRexpat string
+		if label == '{' || label == '*' {
+			segType, _, segRexpat, segTail, _, segEndIdx = patNextSegment(search)
+		}
+
+		var prefix string
+		if segType == ntRegexp {
+			prefix = segRexpat
+		}
+
+		// Look for the edge to attach to
+		parent = n
+		n = n.getEdge(segType, label, segTail, prefix)
+
+		// No edge, create one
+		if n == nil {
+			child := &node{label: label, tail: segTail, prefix: search}
+			hn := parent.addChild(child, search)
+			hn.setEndpoint(method, handler, pattern)
+
+			return hn
+		}
+
+		// Found an edge to match the pattern
+
+		if n.ntype > ntStatic {
+			// We found a param node, trim the param from the search path and continue.
+			// This param/wild pattern segment would already be on the tree from a previous
+			// call to addChild when creating a new node.
+			search = search[segEndIdx:]
+			continue
+		}
+
+		// Static nodes fall below here.
+		// Determine longest prefix of the search key on match.
+		commonPrefix := longestPrefix(search, n.prefix)
+		if commonPrefix == len(n.prefix) {
+			// the common prefix is as long as the current node's prefix we're attempting to insert.
+			// keep the search going.
+			search = search[commonPrefix:]
+			continue
+		}
+
+		// Split the node
+		child := &node{
+			ntype:  ntStatic,
+			prefix: search[:commonPrefix],
+		}
+		parent.replaceChild(search[0], segTail, child)
+
+		// Restore the existing node
+		n.label = n.prefix[commonPrefix]
+		n.prefix = n.prefix[commonPrefix:]
+		child.addChild(n, n.prefix)
+
+		// If the new key is a subset, set the method/handler on this node and finish.
+		search = search[commonPrefix:]
+		if len(search) == 0 {
+			child.setEndpoint(method, handler, pattern)
+			return child
+		}
+
+		// Create a new edge for the node
+		subchild := &node{
+			ntype:  ntStatic,
+			label:  search[0],
+			prefix: search,
+		}
+		hn := child.addChild(subchild, search)
+		hn.setEndpoint(method, handler, pattern)
+		return hn
+	}
+}
+
 func (n *node) findPattern(pattern string) bool {
 	nn := n
 	for _, nds := range nn.child {
@@ -324,6 +416,18 @@ func (n *node) findEdge(ntype nodeType, label byte) *node {
 	default: // catch all
 		return nds[idx]
 	}
+}
+
+func (n *node) replaceChild(label, tail byte, child *node) {
+	for i := 0; i < len(n.child[child.ntype]); i++ {
+		if n.child[child.ntype][i].label == label && n.child[child.ntype][i].tail == tail {
+			n.child[child.ntype][i] = child
+			n.child[child.ntype][i].label = label
+			n.child[child.ntype][i].tail = tail
+			return
+		}
+	}
+	panic("chi: replacing missing child")
 }
 
 func (ns nodes) findEdge(label byte) *node {
