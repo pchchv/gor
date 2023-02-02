@@ -311,6 +311,7 @@ func (n *node) isLeaf() bool {
 
 func (n *node) getEdge(ntyp nodeType, label, tail byte, prefix string) *node {
 	nds := n.child[ntyp]
+
 	for i := 0; i < len(nds); i++ {
 		if nds[i].label == label && nds[i].tail == tail {
 			if ntyp == ntRegexp && nds[i].prefix != prefix {
@@ -320,4 +321,20 @@ func (n *node) getEdge(ntyp nodeType, label, tail byte, prefix string) *node {
 		}
 	}
 	return nil
+}
+
+func (n *node) walk(fn func(eps endpoints, subroutes Routes) bool) bool {
+	if (n.endpoints != nil || n.subroutes != nil) && fn(n.endpoints, n.subroutes) {
+		return true
+	}
+
+	// Recurse on the children
+	for _, ns := range n.child {
+		for _, cn := range ns {
+			if cn.walk(fn) {
+				return true
+			}
+		}
+	}
+	return false
 }
