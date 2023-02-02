@@ -157,6 +157,21 @@ func (mx *Mux) Patch(pattern string, handlerFn http.HandlerFunc) {
 	mx.handle(mPATCH, pattern, handlerFn)
 }
 
+// Post adds a route `pattern` that matches a POST http method to execute the `handlerFn` http.HandlerFunc.
+func (mx *Mux) Post(pattern string, handlerFn http.HandlerFunc) {
+	mx.handle(mPOST, pattern, handlerFn)
+}
+
+// Put adds a route `pattern` that matches a PUT http method to execute the `handlerFn` http.HandlerFunc.
+func (mx *Mux) Put(pattern string, handlerFn http.HandlerFunc) {
+	mx.handle(mPUT, pattern, handlerFn)
+}
+
+// Trace adds a route `pattern` that matches a TRACE http method to execute the `handlerFn` http.HandlerFunc.
+func (mx *Mux) Trace(pattern string, handlerFn http.HandlerFunc) {
+	mx.handle(mTRACE, pattern, handlerFn)
+}
+
 // Handle adds a `pattern` route matching any http method to execute `handler` http.Handler.
 func (mx *Mux) Handle(pattern string, handler http.Handler) {
 	mx.handle(mALL, pattern, handler)
