@@ -308,3 +308,16 @@ func (ns nodes) findEdge(label byte) *node {
 func (n *node) isLeaf() bool {
 	return n.endpoints != nil
 }
+
+func (n *node) getEdge(ntyp nodeType, label, tail byte, prefix string) *node {
+	nds := n.child[ntyp]
+	for i := 0; i < len(nds); i++ {
+		if nds[i].label == label && nds[i].tail == tail {
+			if ntyp == ntRegexp && nds[i].prefix != prefix {
+				continue
+			}
+			return nds[i]
+		}
+	}
+	return nil
+}
