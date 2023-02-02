@@ -328,7 +328,7 @@ func (n *node) walk(fn func(eps endpoints, subroutes Routes) bool) bool {
 		return true
 	}
 
-	// Recurse on the children
+	// recurse on the children
 	for _, ns := range n.child {
 		for _, cn := range ns {
 			if cn.walk(fn) {
@@ -337,4 +337,63 @@ func (n *node) walk(fn func(eps endpoints, subroutes Routes) bool) bool {
 		}
 	}
 	return false
+}
+
+func (n *node) routes() []Route {
+	rts := []Route{}
+
+	n.walk(func(eps endpoints, subroutes Routes) bool {
+		if eps[mSTUB] != nil && eps[mSTUB].handler != nil && subroutes == nil {
+			return false
+		}
+
+		// group methodHandlers by unique patterns
+		pats := make(map[string]endpoints)
+
+		for mt, h := range eps {
+			if h.pattern == "" {
+				continue
+			}
+			p, ok := pats[h.pattern]
+			if !ok {
+				p = endpoints{}
+				pats[h.pattern] = p
+			}
+			p[mt] = h
+		}
+
+		for p, mh := range pats {
+			hs := make(map[string]http.Handler)
+			if mh[mALL] != nil && mh[mALL].handler != nil {
+				hs["*"] = mh[mALL].handler
+			}
+
+			for mt, h := range mh {
+				if h.handler == nil {
+					continue
+				}
+				m := methodTypeString(mt)
+				if m == "" {
+					continue
+				}
+				hs[m] = h.handler
+			}
+
+			rt := Route{subroutes, hs, p}
+			rts = append(rts, rt)
+		}
+
+		return false
+	})
+
+	return rts
+}
+
+func methodTypeString(method methodType) string {
+	for s, t := range methodMap {
+		if method == t {
+			return s
+		}
+	}
+	return ""
 }
