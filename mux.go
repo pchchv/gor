@@ -192,6 +192,50 @@ func (mx *Mux) NotFound(handlerFn http.HandlerFunc) {
 	})
 }
 
+// MethodNotAllowed sets a custom http.HandlerFunc to route paths where the method is unresolved.
+// The default handler returns a 405 with an empty body.
+func (mx *Mux) MethodNotAllowed(handlerFn http.HandlerFunc) {
+	// build MethodNotAllowed handler chain
+	m := mx
+	hFn := handlerFn
+	if mx.inline && mx.parent != nil {
+		m = mx.parent
+		hFn = Chain(mx.middlewares...).HandlerFunc(hFn).ServeHTTP
+	}
+
+	// update the methodNotAllowedHandler from this point forward
+	m.methodNotAllowedHandler = hFn
+	m.updateSubRoutes(func(subMux *Mux) {
+		if subMux.methodNotAllowedHandler == nil {
+			subMux.MethodNotAllowed(hFn)
+		}
+	})
+}
+
+// With adds inline middlewares for the endpoint handler.
+func (mx *Mux) With(middlewares ...func(http.Handler) http.Handler) Router {
+	// imilarly, as in handle(), a mux handler must be created when additional middleware registration
+	// is not allowed for this stack, as it is now.
+	if !mx.inline && mx.handler == nil {
+		mx.updateRouteHandler()
+	}
+
+	// copy middlewares from parent inline muxs
+	var mws Middlewares
+	if mx.inline {
+		mws = make(Middlewares, len(mx.middlewares))
+		copy(mws, mx.middlewares)
+	}
+	mws = append(mws, middlewares...)
+
+	im := &Mux{
+		pool: mx.pool, inline: true, parent: mx, tree: mx.tree, middlewares: mws,
+		notFoundHandler: mx.notFoundHandler, methodNotAllowedHandler: mx.methodNotAllowedHandler,
+	}
+
+	return im
+}
+
 // Handle adds a `pattern` route matching any http method to execute `handler` http.Handler.
 func (mx *Mux) Handle(pattern string, handler http.Handler) {
 	mx.handle(mALL, pattern, handler)
