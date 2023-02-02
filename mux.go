@@ -38,6 +38,8 @@ type Mux struct {
 	inline bool
 }
 
+var _ Router = &Mux{}
+
 // NewMux returns a newly initialized Mux object that implements the Router interface.
 func NewMux() *Mux {
 	mux := &Mux{tree: &node{}, pool: &sync.Pool{}}
@@ -440,12 +442,6 @@ func (mx *Mux) updateRouteHandler() {
 	mx.handler = chain(mx.middlewares, http.HandlerFunc(mx.routeHTTP))
 }
 
-// methodNotAllowedHandler is a helper function to respond with a 405, method not allowed.
-func methodNotAllowedHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(405)
-	w.Write(nil)
-}
-
 // Recursively update data on child routers.
 func (mx *Mux) updateSubRoutes(fn func(subMux *Mux)) {
 	for _, r := range mx.tree.routes() {
@@ -455,4 +451,10 @@ func (mx *Mux) updateSubRoutes(fn func(subMux *Mux)) {
 		}
 		fn(subMux)
 	}
+}
+
+// methodNotAllowedHandler is a helper function to respond with a 405, method not allowed.
+func methodNotAllowedHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(405)
+	w.Write(nil)
 }
