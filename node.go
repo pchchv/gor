@@ -244,7 +244,7 @@ func (n *node) findRoute(rctx *Context, method methodType, path string) *node {
 			return fin
 		}
 
-		// Did not find final handler, let's remove the param here if it was set
+		// did not find final handler, let's remove the param here if it was set
 		if xn.ntype > ntStatic {
 			if len(rctx.routeParams.Values) > 0 {
 				rctx.routeParams.Values = rctx.routeParams.Values[:len(rctx.routeParams.Values)-1]
@@ -261,34 +261,34 @@ func (n *node) InsertRoute(method methodType, pattern string, handler http.Handl
 	search := pattern
 
 	for {
-		// Handle key exhaustion
-		if len(search) == 0 {
-			// Insert or update the node's leaf handler
-			n.setEndpoint(method, handler, pattern)
-			return n
-		}
-
-		// We're going to be searching for a wild node next,
-		// in this case, we need to get the tail
-		label := search[0]
 		var segTail byte
 		var segEndIdx int
 		var segType nodeType
 		var segRexpat string
+		var prefix string
+
+		// handle key exhaustion
+		if len(search) == 0 {
+			// insert or update the node's leaf handler
+			n.setEndpoint(method, handler, pattern)
+			return n
+		}
+
+		// Searching for a wild node next, in this case it was necessary to get the tail
+		label := search[0]
 		if label == '{' || label == '*' {
 			segType, _, segRexpat, segTail, _, segEndIdx = patNextSegment(search)
 		}
 
-		var prefix string
 		if segType == ntRegexp {
 			prefix = segRexpat
 		}
 
-		// Look for the edge to attach to
+		// look for the edge to attach to
 		parent = n
 		n = n.getEdge(segType, label, segTail, prefix)
 
-		// No edge, create one
+		// no edge, create one
 		if n == nil {
 			child := &node{label: label, tail: segTail, prefix: search}
 			hn := parent.addChild(child, search)
@@ -297,18 +297,18 @@ func (n *node) InsertRoute(method methodType, pattern string, handler http.Handl
 			return hn
 		}
 
-		// Found an edge to match the pattern
+		// found an edge to match the pattern
 
 		if n.ntype > ntStatic {
-			// We found a param node, trim the param from the search path and continue.
-			// This param/wild pattern segment would already be on the tree from a previous
-			// call to addChild when creating a new node.
+			// found a param node, trim the param from the search path and continue
+			// this param/wild pattern segment would already be on the tree from a previous
+			// call to addChild when creating a new node
 			search = search[segEndIdx:]
 			continue
 		}
 
-		// Static nodes fall below here.
-		// Determine longest prefix of the search key on match.
+		// static nodes fall below here
+		// determine longest prefix of the search key on match
 		commonPrefix := longestPrefix(search, n.prefix)
 		if commonPrefix == len(n.prefix) {
 			// the common prefix is as long as the current node's prefix we're attempting to insert.
@@ -317,26 +317,26 @@ func (n *node) InsertRoute(method methodType, pattern string, handler http.Handl
 			continue
 		}
 
-		// Split the node
+		// split the node
 		child := &node{
 			ntype:  ntStatic,
 			prefix: search[:commonPrefix],
 		}
 		parent.replaceChild(search[0], segTail, child)
 
-		// Restore the existing node
+		// restore the existing node
 		n.label = n.prefix[commonPrefix]
 		n.prefix = n.prefix[commonPrefix:]
 		child.addChild(n, n.prefix)
 
-		// If the new key is a subset, set the method/handler on this node and finish.
+		// if the new key is a subset, set the method/handler on this node and finish.
 		search = search[commonPrefix:]
 		if len(search) == 0 {
 			child.setEndpoint(method, handler, pattern)
 			return child
 		}
 
-		// Create a new edge for the node
+		// create a new edge for the node
 		subchild := &node{
 			ntype:  ntStatic,
 			label:  search[0],
@@ -344,6 +344,7 @@ func (n *node) InsertRoute(method methodType, pattern string, handler http.Handl
 		}
 		hn := child.addChild(subchild, search)
 		hn.setEndpoint(method, handler, pattern)
+
 		return hn
 	}
 }
@@ -351,6 +352,9 @@ func (n *node) InsertRoute(method methodType, pattern string, handler http.Handl
 func (n *node) findPattern(pattern string) bool {
 	nn := n
 	for _, nds := range nn.child {
+		var idx int
+		var xpattern string
+
 		if len(nds) == 0 {
 			continue
 		}
@@ -359,9 +363,6 @@ func (n *node) findPattern(pattern string) bool {
 		if n == nil {
 			continue
 		}
-
-		var idx int
-		var xpattern string
 
 		switch n.ntype {
 		case ntStatic:
@@ -427,47 +428,7 @@ func (n *node) replaceChild(label, tail byte, child *node) {
 			return
 		}
 	}
-	panic("chi: replacing missing child")
-}
-
-func (ns nodes) findEdge(label byte) *node {
-	num := len(ns)
-	idx := 0
-	i, j := 0, num-1
-
-	for i <= j {
-		idx = i + (j-i)/2
-		if label > ns[idx].label {
-			i = idx + 1
-		} else if label < ns[idx].label {
-			j = idx - 1
-		} else {
-			i = num // breaks cond
-		}
-	}
-
-	if ns[idx].label != label {
-		return nil
-	}
-
-	return ns[idx]
-}
-
-// Sort the list of nodes by label
-func (ns nodes) Sort()              { sort.Sort(ns); ns.tailSort() }
-func (ns nodes) Len() int           { return len(ns) }
-func (ns nodes) Swap(i, j int)      { ns[i], ns[j] = ns[j], ns[i] }
-func (ns nodes) Less(i, j int) bool { return ns[i].label < ns[j].label }
-
-// tailSort pushes nodes with '/' as the tail to the end of the list for param nodes.
-// The list order determines the traversal order.
-func (ns nodes) tailSort() {
-	for i := len(ns) - 1; i >= 0; i-- {
-		if ns[i].ntype > ntStatic && ns[i].tail == '/' {
-			ns.Swap(i, len(ns)-1)
-			return
-		}
-	}
+	panic("gor: replacing missing child")
 }
 
 func (n *node) isLeaf() bool {
@@ -555,7 +516,7 @@ func (n *node) routes() []Route {
 }
 
 func (n *node) setEndpoint(method methodType, handler http.Handler, pattern string) {
-	// Set the handler for the method type on the node
+	// set the handler for the method type on the node
 	if n.endpoints == nil {
 		n.endpoints = make(endpoints)
 	}
@@ -594,19 +555,16 @@ func (n *node) addChild(child *node, prefix string) *node {
 	// this may be overridden later down the flow
 	hn := child
 
-	// Parse next segment
+	// parse next segment
 	segType, _, segRexpat, segTail, segStartIdx, segEndIdx := patNextSegment(search)
 
-	// Add child depending on next up segment
+	// add child depending on next up segment
 	switch segType {
-
 	case ntStatic:
-		// Search prefix is all static (that is, has no params in path)
+		// search prefix is all static (that is, has no params in path)
 		// noop
-
 	default:
-		// Search prefix contains a param, regexp or wildcard
-
+		// search prefix contains a param, regexp or wildcard
 		if segType == ntRegexp {
 			rex, err := regexp.Compile(segRexpat)
 			if err != nil {
@@ -646,8 +604,7 @@ func (n *node) addChild(child *node, prefix string) *node {
 			}
 
 		} else if segStartIdx > 0 {
-			// Route has some param
-
+			// route has some param
 			// starts with a static segment
 			child.ntype = ntStatic
 			child.prefix = search[:segStartIdx]
@@ -669,6 +626,46 @@ func (n *node) addChild(child *node, prefix string) *node {
 	n.child[child.ntype] = append(n.child[child.ntype], child)
 	n.child[child.ntype].Sort()
 	return hn
+}
+
+// Sort the list of nodes by label
+func (ns nodes) Sort()              { sort.Sort(ns); ns.tailSort() }
+func (ns nodes) Len() int           { return len(ns) }
+func (ns nodes) Swap(i, j int)      { ns[i], ns[j] = ns[j], ns[i] }
+func (ns nodes) Less(i, j int) bool { return ns[i].label < ns[j].label }
+
+func (ns nodes) findEdge(label byte) *node {
+	num := len(ns)
+	idx := 0
+	i, j := 0, num-1
+
+	for i <= j {
+		idx = i + (j-i)/2
+		if label > ns[idx].label {
+			i = idx + 1
+		} else if label < ns[idx].label {
+			j = idx - 1
+		} else {
+			i = num // breaks cond
+		}
+	}
+
+	if ns[idx].label != label {
+		return nil
+	}
+
+	return ns[idx]
+}
+
+// tailSort pushes nodes with '/' as the tail to the end of the list for param nodes.
+// The list order determines the traversal order.
+func (ns nodes) tailSort() {
+	for i := len(ns) - 1; i >= 0; i-- {
+		if ns[i].ntype > ntStatic && ns[i].tail == '/' {
+			ns.Swap(i, len(ns)-1)
+			return
+		}
+	}
 }
 
 func (s endpoints) Value(method methodType) *endpoint {
@@ -720,7 +717,7 @@ func patNextSegment(pattern string) (nodeType, string, string, byte, int, int) {
 		panic("gor: wildcard '*' must be the last pattern in a route, otherwise use a '{param}'")
 	}
 
-	var tail byte = '/' // Default endpoint tail to / byte
+	var tail byte = '/' // default endpoint tail to / byte
 
 	if ps >= 0 {
 		// Param/Regexp pattern is next
@@ -770,7 +767,7 @@ func patNextSegment(pattern string) (nodeType, string, string, byte, int, int) {
 		return nt, key, rexpat, tail, ps, pe
 	}
 
-	// Wildcard pattern as finale
+	// wildcard pattern as finale
 	if ws < len(pattern)-1 {
 		panic("gor: wildcard '*' must be the last value in a route. trim trailing text or use a '{param}' instead")
 	}
