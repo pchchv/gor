@@ -1,6 +1,7 @@
 package gor
 
 import (
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -431,6 +432,45 @@ func (n *node) routes() []Route {
 	return rts
 }
 
+func (n *node) setEndpoint(method methodType, handler http.Handler, pattern string) {
+	// Set the handler for the method type on the node
+	if n.endpoints == nil {
+		n.endpoints = make(endpoints)
+	}
+
+	paramKeys := patParamKeys(pattern)
+
+	if method&mSTUB == mSTUB {
+		n.endpoints.Value(mSTUB).handler = handler
+	}
+	if method&mALL == mALL {
+		h := n.endpoints.Value(mALL)
+		h.handler = handler
+		h.pattern = pattern
+		h.paramKeys = paramKeys
+		for _, m := range methodMap {
+			h := n.endpoints.Value(m)
+			h.handler = handler
+			h.pattern = pattern
+			h.paramKeys = paramKeys
+		}
+	} else {
+		h := n.endpoints.Value(method)
+		h.handler = handler
+		h.pattern = pattern
+		h.paramKeys = paramKeys
+	}
+}
+
+func (s endpoints) Value(method methodType) *endpoint {
+	mh, ok := s[method]
+	if !ok {
+		mh = &endpoint{}
+		s[method] = mh
+	}
+	return mh
+}
+
 func methodTypeString(method methodType) string {
 	for s, t := range methodMap {
 		if method == t {
@@ -454,4 +494,94 @@ func longestPrefix(k1, k2 string) int {
 		}
 	}
 	return i
+}
+
+// patNextSegment returns the next segment details from a pattern:
+// node type, param key, regexp string, param tail byte, param starting index, param ending index
+func patNextSegment(pattern string) (nodeType, string, string, byte, int, int) {
+	ps := strings.Index(pattern, "{")
+	ws := strings.Index(pattern, "*")
+
+	if ps < 0 && ws < 0 {
+		return ntStatic, "", "", 0, 0, len(pattern) // we return the entire thing
+	}
+
+	// Sanity check
+	if ps >= 0 && ws >= 0 && ws < ps {
+		panic("chi: wildcard '*' must be the last pattern in a route, otherwise use a '{param}'")
+	}
+
+	var tail byte = '/' // Default endpoint tail to / byte
+
+	if ps >= 0 {
+		// Param/Regexp pattern is next
+		nt := ntParam
+
+		// Read to closing } taking into account opens and closes in curl count (cc)
+		cc := 0
+		pe := ps
+		for i, c := range pattern[ps:] {
+			if c == '{' {
+				cc++
+			} else if c == '}' {
+				cc--
+				if cc == 0 {
+					pe = ps + i
+					break
+				}
+			}
+		}
+		if pe == ps {
+			panic("chi: route param closing delimiter '}' is missing")
+		}
+
+		key := pattern[ps+1 : pe]
+		pe++ // set end to next position
+
+		if pe < len(pattern) {
+			tail = pattern[pe]
+		}
+
+		var rexpat string
+		if idx := strings.Index(key, ":"); idx >= 0 {
+			nt = ntRegexp
+			rexpat = key[idx+1:]
+			key = key[:idx]
+		}
+
+		if len(rexpat) > 0 {
+			if rexpat[0] != '^' {
+				rexpat = "^" + rexpat
+			}
+			if rexpat[len(rexpat)-1] != '$' {
+				rexpat += "$"
+			}
+		}
+
+		return nt, key, rexpat, tail, ps, pe
+	}
+
+	// Wildcard pattern as finale
+	if ws < len(pattern)-1 {
+		panic("chi: wildcard '*' must be the last value in a route. trim trailing text or use a '{param}' instead")
+	}
+	return ntCatchAll, "*", "", 0, ws, len(pattern)
+}
+
+func patParamKeys(pattern string) []string {
+	pat := pattern
+	paramKeys := []string{}
+	for {
+		ptyp, paramKey, _, _, _, e := patNextSegment(pat)
+		if ptyp == ntStatic {
+			return paramKeys
+		}
+		for i := 0; i < len(paramKeys); i++ {
+			if paramKeys[i] == paramKey {
+				panic(fmt.Sprintf("chi: routing pattern '%s' contains duplicate param key, '%s'", pattern, paramKey))
+			}
+		}
+		paramKeys = append(paramKeys, paramKey)
+		pat = pat[e:]
+	}
 }
