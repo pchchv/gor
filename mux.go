@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 )
 
@@ -101,6 +102,21 @@ func (mx *Mux) Use(middlewares ...func(http.Handler) http.Handler) {
 	}
 
 	mx.middlewares = append(mx.middlewares, middlewares...)
+}
+
+// Method adds a route `pattern` that matches `method` http method to execute the `handler` http.Handler.
+func (mx *Mux) Method(method, pattern string, handler http.Handler) {
+	m, ok := methodMap[strings.ToUpper(method)]
+	if !ok {
+		panic(fmt.Sprintf("chi: '%s' http method is not supported.", method))
+	}
+
+	mx.handle(m, pattern, handler)
+}
+
+// MethodFunc adds a route `pattern` that matches `method` http method to execute the `handlerFn` http.HandlerFunc.
+func (mx *Mux) MethodFunc(method, pattern string, handlerFn http.HandlerFunc) {
+	mx.Method(method, pattern, handlerFn)
 }
 
 // MethodNotAllowedHandler returns the default Mux 405 responder whenever a method cannot be resolved for a route.
