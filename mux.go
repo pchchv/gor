@@ -2,6 +2,7 @@ package gor
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sync"
 )
@@ -108,6 +109,40 @@ func (mx *Mux) MethodNotAllowedHandler() http.HandlerFunc {
 		return mx.methodNotAllowedHandler
 	}
 	return methodNotAllowedHandler
+}
+
+// Handle adds a `pattern` route matching any http method to execute `handler` http.Handler.
+func (mx *Mux) Handle(pattern string, handler http.Handler) {
+	mx.handle(mALL, pattern, handler)
+}
+
+// HandleFunc adds a `pattern` route that matches any http method to. execute `handlerFn` http.HandlerFunc.
+func (mx *Mux) HandleFunc(pattern string, handlerFn http.HandlerFunc) {
+	mx.handle(mALL, pattern, handlerFn)
+}
+
+// handle registers http.Handler in the routing tree for a particular http method and routing pattern.
+func (mx *Mux) handle(method methodType, pattern string, handler http.Handler) *node {
+	if len(pattern) == 0 || pattern[0] != '/' {
+		panic(fmt.Sprintf("chi: routing pattern must begin with '/' in '%s'", pattern))
+	}
+
+	// build the computed routing handler for this routing pattern
+	if !mx.inline && mx.handler == nil {
+		mx.updateRouteHandler()
+	}
+
+	// build endpoint handler with inline middlewares for the route
+	var h http.Handler
+	if mx.inline {
+		mx.handler = http.HandlerFunc(mx.routeHTTP)
+		h = Chain(mx.middlewares...).Handler(handler)
+	} else {
+		h = handler
+	}
+
+	// add the endpoint to the tree and return the node
+	return mx.tree.InsertRoute(method, pattern, h)
 }
 
 // routeHTTP routes a http.Request through the Mux routing tree to serve the matching handler for a particular http method.
