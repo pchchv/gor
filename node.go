@@ -285,7 +285,7 @@ func (n *node) findPattern(pattern string) bool {
 			idx = longestPrefix(pattern, "*")
 
 		default:
-			panic("chi: unknown node type")
+			panic("gor: unknown node type")
 		}
 
 		xpattern = pattern[idx:]
@@ -359,7 +359,7 @@ func (ns nodes) Less(i, j int) bool { return ns[i].label < ns[j].label }
 // The list order determines the traversal order.
 func (ns nodes) tailSort() {
 	for i := len(ns) - 1; i >= 0; i-- {
-		if ns[i].typ > ntStatic && ns[i].tail == '/' {
+		if ns[i].ntype > ntStatic && ns[i].tail == '/' {
 			ns.Swap(i, len(ns)-1)
 			return
 		}
@@ -480,6 +480,93 @@ func (n *node) setEndpoint(method methodType, handler http.Handler, pattern stri
 	}
 }
 
+// addChild adds a new `child` node to the tree using `pattern` as the triplet key.
+// For a URL router like the gor router, we separate the static, param, regexp and wildcard segments into different nodes.
+// In addition, addChild will recursively call itself until each template segment is added to the url template tree as separate nodes, depending on type.
+func (n *node) addChild(child *node, prefix string) *node {
+	search := prefix
+
+	// handler leaf node added to the tree is the child.
+	// this may be overridden later down the flow
+	hn := child
+
+	// Parse next segment
+	segType, _, segRexpat, segTail, segStartIdx, segEndIdx := patNextSegment(search)
+
+	// Add child depending on next up segment
+	switch segType {
+
+	case ntStatic:
+		// Search prefix is all static (that is, has no params in path)
+		// noop
+
+	default:
+		// Search prefix contains a param, regexp or wildcard
+
+		if segType == ntRegexp {
+			rex, err := regexp.Compile(segRexpat)
+			if err != nil {
+				panic(fmt.Sprintf("gor: invalid regexp pattern '%s' in route param", segRexpat))
+			}
+			child.prefix = segRexpat
+			child.rex = rex
+		}
+
+		if segStartIdx == 0 {
+			// route starts with a param
+			child.ntype = segType
+
+			if segType == ntCatchAll {
+				segStartIdx = -1
+			} else {
+				segStartIdx = segEndIdx
+			}
+			if segStartIdx < 0 {
+				segStartIdx = len(search)
+			}
+			child.tail = segTail // for params, we set the tail
+
+			if segStartIdx != len(search) {
+				// add static edge for the remaining part, split the end.
+				// its not possible to have adjacent param nodes, so its certainly
+				// going to be a static node next.
+
+				search = search[segStartIdx:] // advance search position
+
+				nn := &node{
+					ntype:  ntStatic,
+					label:  search[0],
+					prefix: search,
+				}
+				hn = child.addChild(nn, search)
+			}
+
+		} else if segStartIdx > 0 {
+			// Route has some param
+
+			// starts with a static segment
+			child.ntype = ntStatic
+			child.prefix = search[:segStartIdx]
+			child.rex = nil
+
+			// add the param edge node
+			search = search[segStartIdx:]
+
+			nn := &node{
+				ntype: segType,
+				label: search[0],
+				tail:  segTail,
+			}
+			hn = child.addChild(nn, search)
+
+		}
+	}
+
+	n.child[child.ntype] = append(n.child[child.ntype], child)
+	n.child[child.ntype].Sort()
+	return hn
+}
+
 func (s endpoints) Value(method methodType) *endpoint {
 	mh, ok := s[method]
 	if !ok {
@@ -526,7 +613,7 @@ func patNextSegment(pattern string) (nodeType, string, string, byte, int, int) {
 
 	// Sanity check
 	if ps >= 0 && ws >= 0 && ws < ps {
-		panic("chi: wildcard '*' must be the last pattern in a route, otherwise use a '{param}'")
+		panic("gor: wildcard '*' must be the last pattern in a route, otherwise use a '{param}'")
 	}
 
 	var tail byte = '/' // Default endpoint tail to / byte
@@ -550,7 +637,7 @@ func patNextSegment(pattern string) (nodeType, string, string, byte, int, int) {
 			}
 		}
 		if pe == ps {
-			panic("chi: route param closing delimiter '}' is missing")
+			panic("gor: route param closing delimiter '}' is missing")
 		}
 
 		key := pattern[ps+1 : pe]
@@ -581,7 +668,7 @@ func patNextSegment(pattern string) (nodeType, string, string, byte, int, int) {
 
 	// Wildcard pattern as finale
 	if ws < len(pattern)-1 {
-		panic("chi: wildcard '*' must be the last value in a route. trim trailing text or use a '{param}' instead")
+		panic("gor: wildcard '*' must be the last value in a route. trim trailing text or use a '{param}' instead")
 	}
 	return ntCatchAll, "*", "", 0, ws, len(pattern)
 }
@@ -596,7 +683,7 @@ func patParamKeys(pattern string) []string {
 		}
 		for i := 0; i < len(paramKeys); i++ {
 			if paramKeys[i] == paramKey {
-				panic(fmt.Sprintf("chi: routing pattern '%s' contains duplicate param key, '%s'", pattern, paramKey))
+				panic(fmt.Sprintf("gor: routing pattern '%s' contains duplicate param key, '%s'", pattern, paramKey))
 			}
 		}
 		paramKeys = append(paramKeys, paramKey)
