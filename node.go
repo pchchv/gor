@@ -254,6 +254,48 @@ func (n *node) findRoute(rctx *Context, method methodType, path string) *node {
 	return nil
 }
 
+func (n *node) findPattern(pattern string) bool {
+	nn := n
+	for _, nds := range nn.child {
+		if len(nds) == 0 {
+			continue
+		}
+
+		n = nn.findEdge(nds[0].ntype, pattern[0])
+		if n == nil {
+			continue
+		}
+
+		var idx int
+		var xpattern string
+
+		switch n.ntype {
+		case ntStatic:
+			idx = longestPrefix(pattern, n.prefix)
+			if idx < len(n.prefix) {
+				continue
+			}
+
+		case ntParam, ntRegexp:
+			idx = strings.IndexByte(pattern, '}') + 1
+
+		case ntCatchAll:
+			idx = longestPrefix(pattern, "*")
+
+		default:
+			panic("chi: unknown node type")
+		}
+
+		xpattern = pattern[idx:]
+		if len(xpattern) == 0 {
+			return true
+		}
+
+		return n.findPattern(xpattern)
+	}
+	return false
+}
+
 func (n *node) findEdge(ntype nodeType, label byte) *node {
 	nds := n.child[ntype]
 	num := len(nds)
@@ -396,4 +438,20 @@ func methodTypeString(method methodType) string {
 		}
 	}
 	return ""
+}
+
+// longestPrefix finds the length of the shared prefix of two strings
+func longestPrefix(k1, k2 string) int {
+	var i int
+	max := len(k1)
+
+	if l := len(k2); l < max {
+		max = l
+	}
+	for i = 0; i < max; i++ {
+		if k1[i] != k2[i] {
+			break
+		}
+	}
+	return i
 }
