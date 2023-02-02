@@ -98,7 +98,7 @@ func (mx *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // or set request-scoped values for the next http.Handler.
 func (mx *Mux) Use(middlewares ...func(http.Handler) http.Handler) {
 	if mx.handler != nil {
-		panic("chi: all middlewares must be defined before routes on a mux")
+		panic("gor: all middlewares must be defined before routes on a mux")
 	}
 
 	mx.middlewares = append(mx.middlewares, middlewares...)
@@ -108,7 +108,7 @@ func (mx *Mux) Use(middlewares ...func(http.Handler) http.Handler) {
 func (mx *Mux) Method(method, pattern string, handler http.Handler) {
 	m, ok := methodMap[strings.ToUpper(method)]
 	if !ok {
-		panic(fmt.Sprintf("chi: '%s' http method is not supported.", method))
+		panic(fmt.Sprintf("gor: '%s' http method is not supported.", method))
 	}
 
 	mx.handle(m, pattern, handler)
@@ -246,10 +246,102 @@ func (mx *Mux) HandleFunc(pattern string, handlerFn http.HandlerFunc) {
 	mx.handle(mALL, pattern, handlerFn)
 }
 
+// Group creates a new inline-Mux with a fresh middleware stack.
+// This is useful for a group of handlers on the same routing path that use an additional set of middleware.
+func (mx *Mux) Group(fn func(r Router)) Router {
+	im := mx.With().(*Mux)
+
+	if fn != nil {
+		fn(im)
+	}
+
+	return im
+}
+
+// Route creates a new Mux with a fresh middleware stack and mounts it along the `pattern` as a subrouter.
+// This is essentially a shortened Mount call.
+func (mx *Mux) Route(pattern string, fn func(r Router)) Router {
+	if fn == nil {
+		panic(fmt.Sprintf("gor: attempting to Route() a nil subrouter on '%s'", pattern))
+	}
+
+	subRouter := NewRouter()
+	fn(subRouter)
+	mx.Mount(pattern, subRouter)
+
+	return subRouter
+}
+
+// Mount attaches another http.Handler or gor Router as a subrouter on the routing path.
+// It is very useful to split a large API into many independent routers and merge them into a single service using Mount.
+// Note that Mount() simply sets a wildcard in the `template` that will continue routing in the `handler`,
+// which in most cases is another gor.Router.
+// As a result, if you define two Mount() routes on the same pattern, mount will cause a panic.
+func (mx *Mux) Mount(pattern string, handler http.Handler) {
+	if handler == nil {
+		panic(fmt.Sprintf("gor: attempting to Mount() a nil handler on '%s'", pattern))
+	}
+
+	// provide runtime safety for ensuring a pattern isn't mounted on an existing routing pattern.
+	if mx.tree.findPattern(pattern+"*") || mx.tree.findPattern(pattern+"/*") {
+		panic(fmt.Sprintf("gor: attempting to Mount() a handler on an existing path, '%s'", pattern))
+	}
+
+	// assign sub-Router's with the parent not found & method not allowed handler if not specified.
+	subr, ok := handler.(*Mux)
+	if ok && subr.notFoundHandler == nil && mx.notFoundHandler != nil {
+		subr.NotFound(mx.notFoundHandler)
+	}
+	if ok && subr.methodNotAllowedHandler == nil && mx.methodNotAllowedHandler != nil {
+		subr.MethodNotAllowed(mx.methodNotAllowedHandler)
+	}
+
+	mountHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rctx := RouteContext(r.Context())
+
+		// shift the url path past the previous subrouter
+		rctx.RoutePath = mx.nextRoutePath(rctx)
+
+		// reset the wildcard URLParam which connects the subrouter
+		n := len(rctx.URLParams.Keys) - 1
+		if n >= 0 && rctx.URLParams.Keys[n] == "*" && len(rctx.URLParams.Values) > n {
+			rctx.URLParams.Values[n] = ""
+		}
+
+		handler.ServeHTTP(w, r)
+	})
+
+	if pattern == "" || pattern[len(pattern)-1] != '/' {
+		mx.handle(mALL|mSTUB, pattern, mountHandler)
+		mx.handle(mALL|mSTUB, pattern+"/", mountHandler)
+		pattern += "/"
+	}
+
+	method := mALL
+	subroutes, _ := handler.(Routes)
+	if subroutes != nil {
+		method |= mSTUB
+	}
+	n := mx.handle(method, pattern+"*", mountHandler)
+
+	if subroutes != nil {
+		n.subroutes = subroutes
+	}
+}
+
+func (mx *Mux) nextRoutePath(rctx *Context) string {
+	routePath := "/"
+	nx := len(rctx.routeParams.Keys) - 1 // index of last param in list
+	if nx >= 0 && rctx.routeParams.Keys[nx] == "*" && len(rctx.routeParams.Values) > nx {
+		routePath = "/" + rctx.routeParams.Values[nx]
+	}
+	return routePath
+}
+
 // handle registers http.Handler in the routing tree for a particular http method and routing pattern.
 func (mx *Mux) handle(method methodType, pattern string, handler http.Handler) *node {
 	if len(pattern) == 0 || pattern[0] != '/' {
-		panic(fmt.Sprintf("chi: routing pattern must begin with '/' in '%s'", pattern))
+		panic(fmt.Sprintf("gor: routing pattern must begin with '/' in '%s'", pattern))
 	}
 
 	// build the computed routing handler for this routing pattern
