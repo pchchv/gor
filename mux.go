@@ -329,6 +329,35 @@ func (mx *Mux) Mount(pattern string, handler http.Handler) {
 	}
 }
 
+// Routes returns a slice of routing information from the tree, useful for traversing available routes of a router.
+func (mx *Mux) Routes() []Route {
+	return mx.tree.routes()
+}
+
+// Middlewares returns a slice of middleware handler functions.
+func (mx *Mux) Middlewares() Middlewares {
+	return mx.middlewares
+}
+
+// Match searches the routing tree for the handler matching the method/path.
+// This is similar to routing an http request, but without executing the handler afterwards.
+// The *Context state is updated  at runtime, so manage the state carefully or make a NewRouteContext().
+func (mx *Mux) Match(rctx *Context, method, path string) bool {
+	m, ok := methodMap[method]
+	if !ok {
+		return false
+	}
+
+	node, _, h := mx.tree.FindRoute(rctx, m, path)
+
+	if node != nil && node.subroutes != nil {
+		rctx.RoutePath = mx.nextRoutePath(rctx)
+		return node.subroutes.Match(rctx, method, rctx.RoutePath)
+	}
+
+	return h != nil
+}
+
 func (mx *Mux) nextRoutePath(rctx *Context) string {
 	routePath := "/"
 	nx := len(rctx.routeParams.Keys) - 1 // index of last param in list
