@@ -415,21 +415,98 @@ func TestMuxNestedNotFound(t *testing.T) {
 	if _, body := testRequest(t, ts, "GET", "/hi", nil); body != "bye" {
 		t.Fatalf(body)
 	}
+
 	if _, body := testRequest(t, ts, "GET", "/nothing-here", nil); body != "root 404 mw with" {
 		t.Fatalf(body)
 	}
+
 	if _, body := testRequest(t, ts, "GET", "/admin1/sub", nil); body != "sub" {
 		t.Fatalf(body)
 	}
+
 	if _, body := testRequest(t, ts, "GET", "/admin1/nope", nil); body != "sub 404 mw2" {
 		t.Fatalf(body)
 	}
+
 	if _, body := testRequest(t, ts, "GET", "/admin2/sub", nil); body != "sub2" {
 		t.Fatalf(body)
 	}
 
 	// not found pages should bubble up to the root.
 	if _, body := testRequest(t, ts, "GET", "/admin2/nope", nil); body != "root 404 mw with" {
+		t.Fatalf(body)
+	}
+}
+
+func TestMuxNestedMethodNotAllowed(t *testing.T) {
+	r := NewRouter()
+	r.Get("/root", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("root"))
+	})
+	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(405)
+		w.Write([]byte("root 405"))
+	})
+
+	sr1 := NewRouter()
+	sr1.Get("/sub1", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("sub1"))
+	})
+	sr1.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(405)
+		w.Write([]byte("sub1 405"))
+	})
+
+	sr2 := NewRouter()
+	sr2.Get("/sub2", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("sub2"))
+	})
+
+	pathVar := NewRouter()
+	pathVar.Get("/{var}", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("pv"))
+	})
+	pathVar.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(405)
+		w.Write([]byte("pv 405"))
+	})
+
+	r.Mount("/prefix1", sr1)
+	r.Mount("/prefix2", sr2)
+	r.Mount("/pathVar", pathVar)
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	if _, body := testRequest(t, ts, "GET", "/root", nil); body != "root" {
+		t.Fatalf(body)
+	}
+
+	if _, body := testRequest(t, ts, "PUT", "/root", nil); body != "root 405" {
+		t.Fatalf(body)
+	}
+
+	if _, body := testRequest(t, ts, "GET", "/prefix1/sub1", nil); body != "sub1" {
+		t.Fatalf(body)
+	}
+
+	if _, body := testRequest(t, ts, "PUT", "/prefix1/sub1", nil); body != "sub1 405" {
+		t.Fatalf(body)
+	}
+
+	if _, body := testRequest(t, ts, "GET", "/prefix2/sub2", nil); body != "sub2" {
+		t.Fatalf(body)
+	}
+
+	if _, body := testRequest(t, ts, "PUT", "/prefix2/sub2", nil); body != "root 405" {
+		t.Fatalf(body)
+	}
+
+	if _, body := testRequest(t, ts, "GET", "/pathVar/myvar", nil); body != "pv" {
+		t.Fatalf(body)
+	}
+
+	if _, body := testRequest(t, ts, "DELETE", "/pathVar/myvar", nil); body != "pv 405" {
 		t.Fatalf(body)
 	}
 }
