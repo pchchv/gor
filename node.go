@@ -56,6 +56,9 @@ type Route struct {
 // endpoints is a mapping of http method constants to handlers for a given route.
 type endpoints map[methodType]*endpoint
 
+// WalkFunc is the type of the function called for each method and route visited by Walk.
+type WalkFunc func(method string, route string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) error
+
 type nodeType uint8
 
 type methodType uint
@@ -676,6 +679,48 @@ func (s endpoints) Value(method methodType) *endpoint {
 		s[method] = mh
 	}
 	return mh
+}
+
+// Walk walks any router tree that implements Routes interface.
+func Walk(r Routes, walkFn WalkFunc) error {
+	return walk(r, walkFn, "")
+}
+
+func walk(r Routes, walkFn WalkFunc, parentRoute string, parentMw ...func(http.Handler) http.Handler) (err error) {
+	for _, route := range r.Routes() {
+		mws := make([]func(http.Handler) http.Handler, len(parentMw))
+		copy(mws, parentMw)
+		mws = append(mws, r.Middlewares()...)
+
+		if route.SubRoutes != nil {
+			if err = walk(route.SubRoutes, walkFn, parentRoute+route.Pattern, mws...); err != nil {
+				return
+			}
+			continue
+		}
+
+		for method, handler := range route.Handlers {
+			if method == "*" {
+				// ignore a "catchAll" method, since we pass down all the specific methods for each route.
+				continue
+			}
+
+			fullRoute := parentRoute + route.Pattern
+			fullRoute = strings.Replace(fullRoute, "/*/", "/", -1)
+
+			if chain, ok := handler.(*ChainHandler); ok {
+				if err = walkFn(method, fullRoute, chain.Endpoint, append(mws, chain.Middlewares...)...); err != nil {
+					return
+				}
+			} else {
+				if err = walkFn(method, fullRoute, handler, mws...); err != nil {
+					return
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func methodTypeString(method methodType) string {
