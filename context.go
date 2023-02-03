@@ -106,3 +106,11 @@ func URLParam(r *http.Request, key string) string {
 	}
 	return ""
 }
+
+// URLParamFromCtx returns the url parameter from a http.Request Context.
+func URLParamFromCtx(ctx context.Context, key string) string {
+	if rctx := RouteContext(ctx); rctx != nil {
+		return rctx.URLParam(key)
+	}
+	return ""
+}
