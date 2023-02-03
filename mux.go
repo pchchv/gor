@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+
+	"github.com/pchchv/golog"
 )
 
 // Mux is a simple HTTP route multiplexer that parses the request path,
@@ -456,5 +458,8 @@ func (mx *Mux) updateSubRoutes(fn func(subMux *Mux)) {
 // methodNotAllowedHandler is a helper function to respond with a 405, method not allowed.
 func methodNotAllowedHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(405)
-	w.Write(nil)
+	_, err := w.Write(nil)
+	if err != nil {
+		golog.Error(err.Error())
+	}
 }
