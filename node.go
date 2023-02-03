@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -790,4 +791,26 @@ func patParamKeys(pattern string) []string {
 		paramKeys = append(paramKeys, paramKey)
 		pat = pat[e:]
 	}
+}
+
+// RegisterMethod adds support for custom HTTP method handlers
+func RegisterMethod(method string) {
+	if method == "" {
+		return
+	}
+
+	method = strings.ToUpper(method)
+
+	if _, ok := methodMap[method]; ok {
+		return
+	}
+
+	n := len(methodMap)
+	if n > strconv.IntSize-2 {
+		panic(fmt.Sprintf("gor: max number of methods reached (%d)", strconv.IntSize))
+	}
+
+	mt := methodType(2 << n)
+	methodMap[method] = mt
+	mALL |= mt
 }
