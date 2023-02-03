@@ -3,6 +3,7 @@ package gor
 import (
 	"context"
 	"net/http"
+	"strings"
 )
 
 // Context is the default routing context set on the root node of the
@@ -84,13 +85,33 @@ func (ctx *Context) Reset() {
 }
 
 // URLParam returns the corresponding URL parameter from the request routing context.
-func (x *Context) URLParam(key string) string {
-	for k := len(x.URLParams.Keys) - 1; k >= 0; k-- {
-		if x.URLParams.Keys[k] == key {
-			return x.URLParams.Values[k]
+func (ctx *Context) URLParam(key string) string {
+	for k := len(ctx.URLParams.Keys) - 1; k >= 0; k-- {
+		if ctx.URLParams.Keys[k] == key {
+			return ctx.URLParams.Values[k]
 		}
 	}
 	return ""
+}
+
+// RoutePattern builds a routing pattern string for a particular request at a particular routing point.
+// This means that the value will change throughout the request execution time in the router.
+// Therefore, it is recommended to use this value only after the next handler is called.
+func (ctx *Context) RoutePattern() string {
+	routePattern := strings.Join(ctx.RoutePatterns, "")
+	routePattern = replaceWildcards(routePattern)
+	routePattern = strings.TrimSuffix(routePattern, "//")
+	routePattern = strings.TrimSuffix(routePattern, "/")
+
+	return routePattern
+}
+
+// replaceWildcards takes a route pattern and recursively replaces all occurrences of "/*/" to "/".
+func replaceWildcards(p string) string {
+	if strings.Contains(p, "/*/") {
+		return replaceWildcards(strings.Replace(p, "/*/", "/", -1))
+	}
+	return p
 }
 
 // RouteContext returns gor routing Context object from a http.Request Context.
