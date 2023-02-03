@@ -356,6 +356,84 @@ func TestMuxTrailingSlash(t *testing.T) {
 	}
 }
 
+func TestMuxNestedNotFound(t *testing.T) {
+	r := NewRouter()
+
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r = r.WithContext(context.WithValue(r.Context(), ctxKey{"mw"}, "mw"))
+			next.ServeHTTP(w, r)
+		})
+	})
+
+	r.Get("/hi", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("bye"))
+	})
+
+	r.With(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r = r.WithContext(context.WithValue(r.Context(), ctxKey{"with"}, "with"))
+			next.ServeHTTP(w, r)
+		})
+	}).NotFound(func(w http.ResponseWriter, r *http.Request) {
+		chkMw := r.Context().Value(ctxKey{"mw"}).(string)
+		chkWith := r.Context().Value(ctxKey{"with"}).(string)
+		w.WriteHeader(404)
+		w.Write([]byte(fmt.Sprintf("root 404 %s %s", chkMw, chkWith)))
+	})
+
+	sr1 := NewRouter()
+
+	sr1.Get("/sub", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("sub"))
+	})
+	sr1.Group(func(sr1 Router) {
+		sr1.Use(func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				r = r.WithContext(context.WithValue(r.Context(), ctxKey{"mw2"}, "mw2"))
+				next.ServeHTTP(w, r)
+			})
+		})
+		sr1.NotFound(func(w http.ResponseWriter, r *http.Request) {
+			chkMw2 := r.Context().Value(ctxKey{"mw2"}).(string)
+			w.WriteHeader(404)
+			w.Write([]byte(fmt.Sprintf("sub 404 %s", chkMw2)))
+		})
+	})
+
+	sr2 := NewRouter()
+	sr2.Get("/sub", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("sub2"))
+	})
+
+	r.Mount("/admin1", sr1)
+	r.Mount("/admin2", sr2)
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	if _, body := testRequest(t, ts, "GET", "/hi", nil); body != "bye" {
+		t.Fatalf(body)
+	}
+	if _, body := testRequest(t, ts, "GET", "/nothing-here", nil); body != "root 404 mw with" {
+		t.Fatalf(body)
+	}
+	if _, body := testRequest(t, ts, "GET", "/admin1/sub", nil); body != "sub" {
+		t.Fatalf(body)
+	}
+	if _, body := testRequest(t, ts, "GET", "/admin1/nope", nil); body != "sub 404 mw2" {
+		t.Fatalf(body)
+	}
+	if _, body := testRequest(t, ts, "GET", "/admin2/sub", nil); body != "sub2" {
+		t.Fatalf(body)
+	}
+
+	// not found pages should bubble up to the root.
+	if _, body := testRequest(t, ts, "GET", "/admin2/nope", nil); body != "root 404 mw with" {
+		t.Fatalf(body)
+	}
+}
+
 func testRequest(t *testing.T, ts *httptest.Server, method, path string, body io.Reader) (*http.Response, string) {
 	req, err := http.NewRequest(method, ts.URL+path, body)
 	if err != nil {
