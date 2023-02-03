@@ -1,6 +1,9 @@
 package gor
 
-import "context"
+import (
+	"context"
+	"net/http"
+)
 
 // Context is the default routing context set on the root node of the
 // request context to track route patterns,
@@ -80,8 +83,26 @@ func (ctx *Context) Reset() {
 	ctx.parentCtx = nil
 }
 
+// URLParam returns the corresponding URL parameter from the request routing context.
+func (x *Context) URLParam(key string) string {
+	for k := len(x.URLParams.Keys) - 1; k >= 0; k-- {
+		if x.URLParams.Keys[k] == key {
+			return x.URLParams.Values[k]
+		}
+	}
+	return ""
+}
+
 // RouteContext returns gor routing Context object from a http.Request Context.
 func RouteContext(ctx context.Context) *Context {
 	val, _ := ctx.Value(RouteCtxKey).(*Context)
 	return val
+}
+
+// URLParam returns the url parameter from a http.Request object.
+func URLParam(r *http.Request, key string) string {
+	if rctx := RouteContext(r.Context()); rctx != nil {
+		return rctx.URLParam(key)
+	}
+	return ""
 }
