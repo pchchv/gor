@@ -300,6 +300,62 @@ func TestMuxPlain(t *testing.T) {
 	}
 }
 
+func TestMuxEmptyRoutes(t *testing.T) {
+	mux := NewRouter()
+
+	apiRouter := NewRouter()
+
+	mux.Handle("/api*", apiRouter)
+
+	if _, body := testHandler(t, mux, "GET", "/", nil); body != "404 page not found\n" {
+		t.Fatalf(body)
+	}
+
+	if _, body := testHandler(t, apiRouter, "GET", "/", nil); body != "404 page not found\n" {
+		t.Fatalf(body)
+	}
+}
+
+// Test the mux that routes the slash.
+func TestMuxTrailingSlash(t *testing.T) {
+	r := NewRouter()
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(404)
+		_, err := w.Write([]byte("nothing here"))
+		if err != nil {
+			t.Error(err)
+		}
+	})
+
+	subRoutes := NewRouter()
+	indexHandler := func(w http.ResponseWriter, r *http.Request) {
+		accountID := URLParam(r, "accountID")
+		_, err := w.Write([]byte(accountID))
+		if err != nil {
+			t.Error(err)
+		}
+	}
+	subRoutes.Get("/", indexHandler)
+
+	r.Mount("/accounts/{accountID}", subRoutes)
+	r.Get("/accounts/{accountID}/", indexHandler)
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	if _, body := testRequest(t, ts, "GET", "/accounts/admin", nil); body != "admin" {
+		t.Fatalf(body)
+	}
+
+	if _, body := testRequest(t, ts, "GET", "/accounts/admin/", nil); body != "admin" {
+		t.Fatalf(body)
+	}
+
+	if _, body := testRequest(t, ts, "GET", "/nothing-here", nil); body != "nothing here" {
+		t.Fatalf(body)
+	}
+}
+
 func testRequest(t *testing.T, ts *httptest.Server, method, path string, body io.Reader) (*http.Response, string) {
 	req, err := http.NewRequest(method, ts.URL+path, body)
 	if err != nil {
@@ -321,4 +377,12 @@ func testRequest(t *testing.T, ts *httptest.Server, method, path string, body io
 	defer resp.Body.Close()
 
 	return resp, string(respBody)
+}
+
+func testHandler(t *testing.T, h http.Handler, method, path string, body io.Reader) (*http.Response, string) {
+	r, _ := http.NewRequest(method, path, body)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	return w.Result(), w.Body.String()
 }
