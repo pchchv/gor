@@ -227,6 +227,79 @@ func TestMuxBasic(t *testing.T) {
 	}
 }
 
+func TestMuxMounts(t *testing.T) {
+	r := NewRouter()
+
+	r.Get("/{hash}", func(w http.ResponseWriter, r *http.Request) {
+		v := URLParam(r, "hash")
+		_, err := w.Write([]byte(fmt.Sprintf("/%s", v)))
+		if err != nil {
+			t.Error(err)
+		}
+	})
+
+	r.Route("/{hash}/share", func(r Router) {
+		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			v := URLParam(r, "hash")
+			_, err := w.Write([]byte(fmt.Sprintf("/%s/share", v)))
+			if err != nil {
+				t.Error(err)
+			}
+		})
+		r.Get("/{network}", func(w http.ResponseWriter, r *http.Request) {
+			v := URLParam(r, "hash")
+			n := URLParam(r, "network")
+			_, err := w.Write([]byte(fmt.Sprintf("/%s/share/%s", v, n)))
+			if err != nil {
+				t.Error(err)
+			}
+		})
+	})
+
+	m := NewRouter()
+	m.Mount("/sharing", r)
+
+	ts := httptest.NewServer(m)
+	defer ts.Close()
+
+	if _, body := testRequest(t, ts, "GET", "/sharing/aBc", nil); body != "/aBc" {
+		t.Fatalf(body)
+	}
+	if _, body := testRequest(t, ts, "GET", "/sharing/aBc/share", nil); body != "/aBc/share" {
+		t.Fatalf(body)
+	}
+	if _, body := testRequest(t, ts, "GET", "/sharing/aBc/share/twitter", nil); body != "/aBc/share/twitter" {
+		t.Fatalf(body)
+	}
+}
+
+func TestMuxPlain(t *testing.T) {
+	r := NewRouter()
+	r.Get("/hi", func(w http.ResponseWriter, r *http.Request) {
+		_, err := w.Write([]byte("bye"))
+		if err != nil {
+			t.Error(err)
+		}
+	})
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(404)
+		_, err := w.Write([]byte("nothing here"))
+		if err != nil {
+			t.Error(err)
+		}
+	})
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	if _, body := testRequest(t, ts, "GET", "/hi", nil); body != "bye" {
+		t.Fatalf(body)
+	}
+	if _, body := testRequest(t, ts, "GET", "/nothing-here", nil); body != "nothing here" {
+		t.Fatalf(body)
+	}
+}
+
 func testRequest(t *testing.T, ts *httptest.Server, method, path string, body io.Reader) (*http.Response, string) {
 	req, err := http.NewRequest(method, ts.URL+path, body)
 	if err != nil {
