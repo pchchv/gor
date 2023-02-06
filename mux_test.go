@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -1543,6 +1544,97 @@ func TestEscapedURLParams(t *testing.T) {
 	defer ts.Close()
 
 	if _, body := testRequest(t, ts, "GET", "/api/http:%2f%2fexample.com%2fimage.png/full/max/0/color.png", nil); body != "success" {
+		t.Fatalf(body)
+	}
+}
+
+func TestCustomHTTPMethod(t *testing.T) {
+	// first register this method so that it is accepted, then define the method handlers on the router below
+	RegisterMethod("BOO")
+
+	r := NewRouter()
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("."))
+	})
+
+	r.MethodFunc("BOO", "/hi", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("custom method"))
+	})
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	if _, body := testRequest(t, ts, "GET", "/", nil); body != "." {
+		t.Fatalf(body)
+	}
+
+	if _, body := testRequest(t, ts, "BOO", "/hi", nil); body != "custom method" {
+		t.Fatalf(body)
+	}
+}
+
+func TestMuxMatch(t *testing.T) {
+	r := NewRouter()
+	r.Get("/hi", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Test", "yes")
+		w.Write([]byte("bye"))
+	})
+	r.Route("/articles", func(r Router) {
+		r.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
+			id := URLParam(r, "id")
+			w.Header().Set("X-Article", id)
+			w.Write([]byte("article:" + id))
+		})
+	})
+	r.Route("/users", func(r Router) {
+		r.Head("/{id}", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-User", "-")
+			w.Write([]byte("user"))
+		})
+		r.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
+			id := URLParam(r, "id")
+			w.Header().Set("X-User", id)
+			w.Write([]byte("user:" + id))
+		})
+	})
+
+	tctx := NewRouteContext()
+
+	tctx.Reset()
+	if r.Match(tctx, "GET", "/users/1") == false {
+		t.Fatal("expecting to find match for route:", "GET", "/users/1")
+	}
+
+	tctx.Reset()
+	if r.Match(tctx, "HEAD", "/articles/10") == true {
+		t.Fatal("not expecting to find match for route:", "HEAD", "/articles/10")
+	}
+}
+
+func TestServerBaseContext(t *testing.T) {
+	r := NewRouter()
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		baseYes := r.Context().Value(ctxKey{"base"}).(string)
+		if _, ok := r.Context().Value(http.ServerContextKey).(*http.Server); !ok {
+			panic("missing server context")
+		}
+		if _, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr); !ok {
+			panic("missing local addr context")
+		}
+		w.Write([]byte(baseYes))
+	})
+
+	// setup http Server with a base context
+	ctx := context.WithValue(context.Background(), ctxKey{"base"}, "yes")
+	ts := httptest.NewUnstartedServer(r)
+	ts.Config.BaseContext = func(_ net.Listener) context.Context {
+		return ctx
+	}
+	ts.Start()
+
+	defer ts.Close()
+
+	if _, body := testRequest(t, ts, "GET", "/", nil); body != "yes" {
 		t.Fatalf(body)
 	}
 }
