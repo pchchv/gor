@@ -905,6 +905,69 @@ func TestMuxBig(t *testing.T) {
 	}
 }
 
+func TestMuxSubroutesBasic(t *testing.T) {
+	var body, expected string
+	r := NewRouter()
+	hIndex := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("index"))
+	})
+	hArticlesList := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("articles-list"))
+	})
+	hSearchArticles := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("search-articles"))
+	})
+	hGetArticle := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(fmt.Sprintf("get-article:%s", URLParam(r, "id"))))
+	})
+	hSyncArticle := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(fmt.Sprintf("sync-article:%s", URLParam(r, "id"))))
+	})
+
+	r.Get("/", hIndex)
+	r.Route("/articles", func(r Router) {
+		r.Get("/", hArticlesList)
+		r.Get("/search", hSearchArticles)
+		r.Route("/{id}", func(r Router) {
+			r.Get("/", hGetArticle)
+			r.Get("/sync", hSyncArticle)
+		})
+	})
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	_, body = testRequest(t, ts, "GET", "/", nil)
+	expected = "index"
+	if body != expected {
+		t.Fatalf("expected:%s got:%s", expected, body)
+	}
+
+	_, body = testRequest(t, ts, "GET", "/articles", nil)
+	expected = "articles-list"
+	if body != expected {
+		t.Fatalf("expected:%s got:%s", expected, body)
+	}
+
+	_, body = testRequest(t, ts, "GET", "/articles/search", nil)
+	expected = "search-articles"
+	if body != expected {
+		t.Fatalf("expected:%s got:%s", expected, body)
+	}
+
+	_, body = testRequest(t, ts, "GET", "/articles/123", nil)
+	expected = "get-article:123"
+	if body != expected {
+		t.Fatalf("expected:%s got:%s", expected, body)
+	}
+
+	_, body = testRequest(t, ts, "GET", "/articles/123/sync", nil)
+	expected = "sync-article:123"
+	if body != expected {
+		t.Fatalf("expected:%s got:%s", expected, body)
+	}
+}
+
 func testRequest(t *testing.T, ts *httptest.Server, method, path string, body io.Reader) (*http.Response, string) {
 	req, err := http.NewRequest(method, ts.URL+path, body)
 	if err != nil {
