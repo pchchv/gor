@@ -675,6 +675,25 @@ func TestMuxWith(t *testing.T) {
 	}
 }
 
+func TestRouterFromMuxWith(t *testing.T) {
+	t.Parallel()
+
+	r := NewRouter()
+
+	with := r.With(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r)
+		})
+	})
+
+	with.Get("/with_middleware", func(w http.ResponseWriter, r *http.Request) {})
+
+	ts := httptest.NewServer(with)
+	defer ts.Close()
+
+	testRequest(t, ts, http.MethodGet, "/with_middleware", nil)
+}
+
 func testRequest(t *testing.T, ts *httptest.Server, method, path string, body io.Reader) (*http.Response, string) {
 	req, err := http.NewRequest(method, ts.URL+path, body)
 	if err != nil {
