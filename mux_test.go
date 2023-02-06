@@ -775,6 +775,66 @@ func TestMuxMiddlewareStack(t *testing.T) {
 	}
 }
 
+func TestMuxRouteGroups(t *testing.T) {
+	var (
+		stdmwInit     uint64
+		stdmwInit2    uint64
+		stdmwHandler  uint64
+		stdmwHandler2 uint64
+		body          string
+	)
+
+	stdmw := func(next http.Handler) http.Handler {
+		stdmwInit++
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			stdmwHandler++
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	stdmw2 := func(next http.Handler) http.Handler {
+		stdmwInit2++
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			stdmwHandler2++
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	r := NewRouter()
+	r.Group(func(r Router) {
+		r.Use(stdmw)
+		r.Get("/group", func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("root group"))
+		})
+	})
+
+	r.Group(func(r Router) {
+		r.Use(stdmw2)
+		r.Get("/group2", func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("root group2"))
+		})
+	})
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	_, body = testRequest(t, ts, "GET", "/group", nil)
+	if body != "root group" {
+		t.Fatalf("got: '%s'", body)
+	}
+	if stdmwInit != 1 || stdmwHandler != 1 {
+		t.Logf("stdmw counters failed, should be 1:1, got %d:%d", stdmwInit, stdmwHandler)
+	}
+
+	_, body = testRequest(t, ts, "GET", "/group2", nil)
+	if body != "root group2" {
+		t.Fatalf("got: '%s'", body)
+	}
+	if stdmwInit2 != 1 || stdmwHandler2 != 1 {
+		t.Fatalf("stdmw2 counters failed, should be 1:1, got %d:%d", stdmwInit2, stdmwHandler2)
+	}
+}
+
 func testRequest(t *testing.T, ts *httptest.Server, method, path string, body io.Reader) (*http.Response, string) {
 	req, err := http.NewRequest(method, ts.URL+path, body)
 	if err != nil {
