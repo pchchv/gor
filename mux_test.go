@@ -1077,6 +1077,31 @@ func TestMuxSubroutes(t *testing.T) {
 	}
 }
 
+func TestSingleHandler(t *testing.T) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name := URLParam(r, "name")
+		w.Write([]byte("hi " + name))
+	})
+
+	r, err := http.NewRequest("GET", "/", nil)
+	if err != nil {
+		t.Error(err)
+	}
+
+	rctx := NewRouteContext()
+	r = r.WithContext(context.WithValue(r.Context(), RouteCtxKey, rctx))
+	rctx.URLParams.Add("name", "joe")
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	body := w.Body.String()
+	expected := "hi joe"
+	if body != expected {
+		t.Fatalf("expected:%s got:%s", expected, body)
+	}
+}
+
 func testRequest(t *testing.T, ts *httptest.Server, method, path string, body io.Reader) (*http.Response, string) {
 	req, err := http.NewRequest(method, ts.URL+path, body)
 	if err != nil {
