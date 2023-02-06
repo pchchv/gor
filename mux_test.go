@@ -1282,6 +1282,50 @@ func TestMountingSimilarPattern(t *testing.T) {
 	}
 }
 
+func TestMuxEmptyParams(t *testing.T) {
+	r := NewRouter()
+	r.Get(`/users/{x}/{y}/{z}`, func(w http.ResponseWriter, r *http.Request) {
+		x := URLParam(r, "x")
+		y := URLParam(r, "y")
+		z := URLParam(r, "z")
+		w.Write([]byte(fmt.Sprintf("%s-%s-%s", x, y, z)))
+	})
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	if _, body := testRequest(t, ts, "GET", "/users/a/b/c", nil); body != "a-b-c" {
+		t.Fatalf(body)
+	}
+
+	if _, body := testRequest(t, ts, "GET", "/users///c", nil); body != "--c" {
+		t.Fatalf(body)
+	}
+}
+
+func TestMuxMissingParams(t *testing.T) {
+	r := NewRouter()
+	r.Get(`/user/{userId:\d+}`, func(w http.ResponseWriter, r *http.Request) {
+		userID := URLParam(r, "userId")
+		w.Write([]byte(fmt.Sprintf("userId = '%s'", userID)))
+	})
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(404)
+		w.Write([]byte("nothing here"))
+	})
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	if _, body := testRequest(t, ts, "GET", "/user/123", nil); body != "userId = '123'" {
+		t.Fatalf(body)
+	}
+
+	if _, body := testRequest(t, ts, "GET", "/user/", nil); body != "nothing here" {
+		t.Fatalf(body)
+	}
+}
+
 func testRequest(t *testing.T, ts *httptest.Server, method, path string, body io.Reader) (*http.Response, string) {
 	req, err := http.NewRequest(method, ts.URL+path, body)
 	if err != nil {
