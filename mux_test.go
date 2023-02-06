@@ -1216,6 +1216,45 @@ func TestNestedGroups(t *testing.T) {
 	}
 }
 
+func TestMiddlewarePanicOnLateUse(t *testing.T) {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("hello\n"))
+	}
+
+	mw := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	defer func() {
+		if recover() == nil {
+			t.Error("expected panic()")
+		}
+	}()
+
+	r := NewRouter()
+
+	r.Get("/", handler)
+	r.Use(mw)
+}
+
+func TestMountingExistingPath(t *testing.T) {
+	handler := func(w http.ResponseWriter, r *http.Request) {}
+
+	defer func() {
+		if recover() == nil {
+			t.Error("expected panic()")
+		}
+	}()
+
+	r := NewRouter()
+
+	r.Get("/", handler)
+	r.Mount("/hi", http.HandlerFunc(handler))
+	r.Mount("/hi", http.HandlerFunc(handler))
+}
+
 func testRequest(t *testing.T, ts *httptest.Server, method, path string, body io.Reader) (*http.Response, string) {
 	req, err := http.NewRequest(method, ts.URL+path, body)
 	if err != nil {
