@@ -968,6 +968,115 @@ func TestMuxSubroutesBasic(t *testing.T) {
 	}
 }
 
+func TestMuxSubroutes(t *testing.T) {
+	var body, expected string
+	hHubView1 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("hub1"))
+	})
+	hHubView2 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("hub2"))
+	})
+	hHubView3 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("hub3"))
+	})
+	hAccountView1 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("account1"))
+	})
+	hAccountView2 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("account2"))
+	})
+
+	r := NewRouter()
+	r.Get("/hubs/{hubID}/view", hHubView1)
+	r.Get("/hubs/{hubID}/view/*", hHubView2)
+
+	sr := NewRouter()
+	sr.Get("/", hHubView3)
+	r.Mount("/hubs/{hubID}/users", sr)
+	r.Get("/hubs/{hubID}/users/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("hub3 override"))
+	})
+
+	sr3 := NewRouter()
+	sr3.Get("/", hAccountView1)
+	sr3.Get("/hi", hAccountView2)
+
+	r.Route("/accounts/{accountID}", func(r Router) {
+		_ = r.(*Mux)
+		r.Get("/", hAccountView1)
+		r.Mount("/", sr3)
+	})
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	_, body = testRequest(t, ts, "GET", "/hubs/123/view", nil)
+	expected = "hub1"
+	if body != expected {
+		t.Fatalf("expected:%s got:%s", expected, body)
+	}
+	_, body = testRequest(t, ts, "GET", "/hubs/123/view/index.html", nil)
+	expected = "hub2"
+	if body != expected {
+		t.Fatalf("expected:%s got:%s", expected, body)
+	}
+	_, body = testRequest(t, ts, "GET", "/hubs/123/users", nil)
+	expected = "hub3"
+	if body != expected {
+		t.Fatalf("expected:%s got:%s", expected, body)
+	}
+	_, body = testRequest(t, ts, "GET", "/hubs/123/users/", nil)
+	expected = "hub3 override"
+	if body != expected {
+		t.Fatalf("expected:%s got:%s", expected, body)
+	}
+	_, body = testRequest(t, ts, "GET", "/accounts/44", nil)
+	expected = "account1"
+	if body != expected {
+		t.Fatalf("request:%s expected:%s got:%s", "GET /accounts/44", expected, body)
+	}
+	_, body = testRequest(t, ts, "GET", "/accounts/44/hi", nil)
+	expected = "account2"
+	if body != expected {
+		t.Fatalf("expected:%s got:%s", expected, body)
+	}
+
+	router := r
+	req, _ := http.NewRequest("GET", "/accounts/44/hi", nil)
+
+	rctx := NewRouteContext()
+	req = req.WithContext(context.WithValue(req.Context(), RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	body = w.Body.String()
+	expected = "account2"
+	if body != expected {
+		t.Fatalf("expected:%s got:%s", expected, body)
+	}
+
+	routePatterns := rctx.RoutePatterns
+	if len(rctx.RoutePatterns) != 3 {
+		t.Fatalf("expected 3 routing patterns, got:%d", len(rctx.RoutePatterns))
+	}
+
+	expected = "/accounts/{accountID}/*"
+	if routePatterns[0] != expected {
+		t.Fatalf("routePattern, expected:%s got:%s", expected, routePatterns[0])
+	}
+
+	expected = "/*"
+	if routePatterns[1] != expected {
+		t.Fatalf("routePattern, expected:%s got:%s", expected, routePatterns[1])
+	}
+
+	expected = "/hi"
+	if routePatterns[2] != expected {
+		t.Fatalf("routePattern, expected:%s got:%s", expected, routePatterns[2])
+	}
+}
+
 func testRequest(t *testing.T, ts *httptest.Server, method, path string, body io.Reader) (*http.Response, string) {
 	req, err := http.NewRequest(method, ts.URL+path, body)
 	if err != nil {
