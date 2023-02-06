@@ -1326,6 +1326,48 @@ func TestMuxMissingParams(t *testing.T) {
 	}
 }
 
+func TestMuxWildcardRoute(t *testing.T) {
+	handler := func(w http.ResponseWriter, r *http.Request) {}
+
+	defer func() {
+		if recover() == nil {
+			t.Error("expected panic()")
+		}
+	}()
+
+	r := NewRouter()
+	r.Get("/*/wildcard/must/be/at/end", handler)
+}
+
+func TestMuxWildcardRouteCheckTwo(t *testing.T) {
+	handler := func(w http.ResponseWriter, r *http.Request) {}
+
+	defer func() {
+		if recover() == nil {
+			t.Error("expected panic()")
+		}
+	}()
+
+	r := NewRouter()
+	r.Get("/*/wildcard/{must}/be/at/end", handler)
+}
+
+func TestMuxRegexp(t *testing.T) {
+	r := NewRouter()
+	r.Route("/{param:[0-9]*}/test", func(r Router) {
+		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(fmt.Sprintf("Hi: %s", URLParam(r, "param"))))
+		})
+	})
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	if _, body := testRequest(t, ts, "GET", "//test", nil); body != "Hi: " {
+		t.Fatalf(body)
+	}
+}
+
 func testRequest(t *testing.T, ts *httptest.Server, method, path string, body io.Reader) (*http.Response, string) {
 	req, err := http.NewRequest(method, ts.URL+path, body)
 	if err != nil {
