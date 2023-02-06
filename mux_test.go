@@ -1102,6 +1102,120 @@ func TestSingleHandler(t *testing.T) {
 	}
 }
 
+func TestServeHTTPExistingContext(t *testing.T) {
+	r := NewRouter()
+	r.Get("/hi", func(w http.ResponseWriter, r *http.Request) {
+		s, _ := r.Context().Value(ctxKey{"testCtx"}).(string)
+		w.Write([]byte(s))
+	})
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		s, _ := r.Context().Value(ctxKey{"testCtx"}).(string)
+		w.WriteHeader(404)
+		w.Write([]byte(s))
+	})
+
+	testcases := []struct {
+		Ctx            context.Context
+		Method         string
+		Path           string
+		ExpectedBody   string
+		ExpectedStatus int
+	}{
+		{
+			Method:         "GET",
+			Path:           "/hi",
+			Ctx:            context.WithValue(context.Background(), ctxKey{"testCtx"}, "hi ctx"),
+			ExpectedStatus: 200,
+			ExpectedBody:   "hi ctx",
+		},
+		{
+			Method:         "GET",
+			Path:           "/hello",
+			Ctx:            context.WithValue(context.Background(), ctxKey{"testCtx"}, "nothing here ctx"),
+			ExpectedStatus: 404,
+			ExpectedBody:   "nothing here ctx",
+		},
+	}
+
+	for _, tc := range testcases {
+		resp := httptest.NewRecorder()
+		req, err := http.NewRequest(tc.Method, tc.Path, nil)
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+
+		req = req.WithContext(tc.Ctx)
+		r.ServeHTTP(resp, req)
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+
+		if resp.Code != tc.ExpectedStatus {
+			t.Fatalf("%v != %v", tc.ExpectedStatus, resp.Code)
+		}
+
+		if string(b) != tc.ExpectedBody {
+			t.Fatalf("%s != %s", tc.ExpectedBody, b)
+		}
+	}
+}
+
+func TestNestedGroups(t *testing.T) {
+	handlerPrintCounter := func(w http.ResponseWriter, r *http.Request) {
+		counter, _ := r.Context().Value(ctxKey{"counter"}).(int)
+		w.Write([]byte(fmt.Sprintf("%v", counter)))
+	}
+
+	mwIncreaseCounter := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			counter, _ := ctx.Value(ctxKey{"counter"}).(int)
+			counter++
+			ctx = context.WithValue(ctx, ctxKey{"counter"}, counter)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+
+	// each route represents value of its counter.
+	r := NewRouter() // counter == 0
+	r.Get("/0", handlerPrintCounter)
+	r.Group(func(r Router) {
+		r.Use(mwIncreaseCounter) // counter == 1
+		r.Get("/1", handlerPrintCounter)
+
+		r.Handle("/2", Chain(mwIncreaseCounter).HandlerFunc(handlerPrintCounter))
+		r.With(mwIncreaseCounter).Get("/2", handlerPrintCounter)
+
+		r.Group(func(r Router) {
+			r.Use(mwIncreaseCounter, mwIncreaseCounter) // counter == 3
+			r.Get("/3", handlerPrintCounter)
+		})
+		r.Route("/", func(r Router) {
+			r.Use(mwIncreaseCounter, mwIncreaseCounter) // counter == 3
+
+			r.Handle("/4", Chain(mwIncreaseCounter).HandlerFunc(handlerPrintCounter))
+			r.With(mwIncreaseCounter).Get("/4", handlerPrintCounter)
+
+			r.Group(func(r Router) {
+				r.Use(mwIncreaseCounter, mwIncreaseCounter) // counter == 5
+				r.Get("/5", handlerPrintCounter)
+				r.Handle("/6", Chain(mwIncreaseCounter).HandlerFunc(handlerPrintCounter))
+				r.With(mwIncreaseCounter).Get("/6", handlerPrintCounter)
+			})
+		})
+	})
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	for _, route := range []string{"0", "1", "2", "3", "4", "5", "6"} {
+		if _, body := testRequest(t, ts, "GET", "/"+route, nil); body != route {
+			t.Errorf("expected %v, got %v", route, body)
+		}
+	}
+}
+
 func testRequest(t *testing.T, ts *httptest.Server, method, path string, body io.Reader) (*http.Response, string) {
 	req, err := http.NewRequest(method, ts.URL+path, body)
 	if err != nil {
