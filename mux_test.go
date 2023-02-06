@@ -7,7 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 )
 
 type ctxKey struct {
@@ -1459,6 +1461,88 @@ func TestMuxSubrouterWildcardParam(t *testing.T) {
 	}
 
 	if _, body := testRequest(t, ts, "GET", "/case0/hi/yes", nil); body != "param:hi *:yes" {
+		t.Fatalf(body)
+	}
+}
+
+func TestMuxContextIsThreadSafe(t *testing.T) {
+	router := NewRouter()
+	router.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 1*time.Millisecond)
+		defer cancel()
+
+		<-ctx.Done()
+	})
+
+	wg := sync.WaitGroup{}
+
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 10000; j++ {
+				w := httptest.NewRecorder()
+				r, err := http.NewRequest("GET", "/ok", nil)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+
+				ctx, cancel := context.WithCancel(r.Context())
+				r = r.WithContext(ctx)
+
+				go func() {
+					cancel()
+				}()
+				router.ServeHTTP(w, r)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+func TestEscapedURLParams(t *testing.T) {
+	m := NewRouter()
+
+	m.Get("/api/{identifier}/{region}/{size}/{rotation}/*", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		rctx := RouteContext(r.Context())
+		if rctx == nil {
+			t.Error("no context")
+			return
+		}
+
+		identifier := URLParam(r, "identifier")
+		if identifier != "http:%2f%2fexample.com%2fimage.png" {
+			t.Errorf("identifier path parameter incorrect %s", identifier)
+			return
+		}
+
+		region := URLParam(r, "region")
+		if region != "full" {
+			t.Errorf("region path parameter incorrect %s", region)
+			return
+		}
+
+		size := URLParam(r, "size")
+		if size != "max" {
+			t.Errorf("size path parameter incorrect %s", size)
+			return
+		}
+
+		rotation := URLParam(r, "rotation")
+		if rotation != "0" {
+			t.Errorf("rotation path parameter incorrect %s", rotation)
+			return
+		}
+
+		w.Write([]byte("success"))
+	})
+
+	ts := httptest.NewServer(m)
+	defer ts.Close()
+
+	if _, body := testRequest(t, ts, "GET", "/api/http:%2f%2fexample.com%2fimage.png/full/max/0/color.png", nil); body != "success" {
 		t.Fatalf(body)
 	}
 }
