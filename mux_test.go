@@ -694,6 +694,87 @@ func TestRouterFromMuxWith(t *testing.T) {
 	testRequest(t, ts, http.MethodGet, "/with_middleware", nil)
 }
 
+func TestMuxMiddlewareStack(t *testing.T) {
+	var (
+		stdmwInit      uint64
+		ctxmwInit      uint64
+		inCtxmwInit    uint64
+		stdmwHandler   uint64
+		ctxmwHandler   uint64
+		inCtxmwHandler uint64
+		handlerCount   uint64
+		body           string
+	)
+
+	stdmw := func(next http.Handler) http.Handler {
+		stdmwInit++
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			stdmwHandler++
+			next.ServeHTTP(w, r)
+		})
+	}
+	_ = stdmw
+
+	ctxmw := func(next http.Handler) http.Handler {
+		ctxmwInit++
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctxmwHandler++
+			ctx := r.Context()
+			ctx = context.WithValue(ctx, ctxKey{"count.ctxmwHandler"}, ctxmwHandler)
+			r = r.WithContext(ctx)
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	inCtxmw := func(next http.Handler) http.Handler {
+		inCtxmwInit++
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			inCtxmwHandler++
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	r := NewRouter()
+	r.Use(stdmw)
+	r.Use(ctxmw)
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/ping" {
+				w.Write([]byte("pong"))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
+
+	r.With(inCtxmw).Get("/", func(w http.ResponseWriter, r *http.Request) {
+		handlerCount++
+		ctx := r.Context()
+		ctxmwHandlerCount := ctx.Value(ctxKey{"count.ctxmwHandler"}).(uint64)
+		w.Write([]byte(fmt.Sprintf("inits:%d reqs:%d ctxValue:%d", ctxmwInit, handlerCount, ctxmwHandlerCount)))
+	})
+
+	r.Get("/hi", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("wooot"))
+	})
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	testRequest(t, ts, "GET", "/", nil)
+	testRequest(t, ts, "GET", "/", nil)
+
+	_, body = testRequest(t, ts, "GET", "/", nil)
+	if body != "inits:1 reqs:3 ctxValue:3" {
+		t.Fatalf("got: '%s'", body)
+	}
+
+	_, body = testRequest(t, ts, "GET", "/ping", nil)
+	if body != "pong" {
+		t.Fatalf("got: '%s'", body)
+	}
+}
+
 func testRequest(t *testing.T, ts *httptest.Server, method, path string, body io.Reader) (*http.Response, string) {
 	req, err := http.NewRequest(method, ts.URL+path, body)
 	if err != nil {
