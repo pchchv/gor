@@ -1255,6 +1255,33 @@ func TestMountingExistingPath(t *testing.T) {
 	r.Mount("/hi", http.HandlerFunc(handler))
 }
 
+func TestMountingSimilarPattern(t *testing.T) {
+	r := NewRouter()
+	r.Get("/hi", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("bye"))
+	})
+
+	r2 := NewRouter()
+	r2.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("foobar"))
+	})
+
+	r3 := NewRouter()
+	r3.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("foo"))
+	})
+
+	r.Mount("/foobar", r2)
+	r.Mount("/foo", r3)
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	if _, body := testRequest(t, ts, "GET", "/hi", nil); body != "bye" {
+		t.Fatalf(body)
+	}
+}
+
 func testRequest(t *testing.T, ts *httptest.Server, method, path string, body io.Reader) (*http.Response, string) {
 	req, err := http.NewRequest(method, ts.URL+path, body)
 	if err != nil {
