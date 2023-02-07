@@ -318,6 +318,82 @@ func TestTreeRegexp(t *testing.T) {
 	}
 }
 
+func TestTreeRegexpRecursive(t *testing.T) {
+	hStub1 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub2 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+
+	tr := &node{}
+	tr.InsertRoute(mGET, "/one/{firstId:[a-z0-9-]+}/{secondId:[a-z0-9-]+}/first", hStub1)
+	tr.InsertRoute(mGET, "/one/{firstId:[a-z0-9-_]+}/{secondId:[a-z0-9-_]+}/second", hStub2)
+
+	tests := []struct {
+		r string       // input request path
+		h http.Handler // output matched handler
+		k []string     // output param keys
+		v []string     // output param values
+	}{
+		{r: "/one/hello/world/first", h: hStub1, k: []string{"firstId", "secondId"}, v: []string{"hello", "world"}},
+		{r: "/one/hi_there/ok/second", h: hStub2, k: []string{"firstId", "secondId"}, v: []string{"hi_there", "ok"}},
+		{r: "/one///first", h: nil, k: []string{}, v: []string{}},
+		{r: "/one/hi/123/second", h: hStub2, k: []string{"firstId", "secondId"}, v: []string{"hi", "123"}},
+	}
+
+	for i, tt := range tests {
+		var handler http.Handler
+		rctx := NewRouteContext()
+		_, handlers, _ := tr.FindRoute(rctx, mGET, tt.r)
+		paramKeys := rctx.routeParams.Keys
+		paramValues := rctx.routeParams.Values
+
+		if methodHandler, ok := handlers[mGET]; ok {
+			handler = methodHandler.handler
+		}
+
+		if fmt.Sprintf("%v", tt.h) != fmt.Sprintf("%v", handler) {
+			t.Errorf("input [%d]: find '%s' expecting handler:%v , got:%v", i, tt.r, tt.h, handler)
+		}
+
+		if !stringSliceEqual(tt.k, paramKeys) {
+			t.Errorf("input [%d]: find '%s' expecting paramKeys:(%d)%v , got:(%d)%v", i, tt.r, len(tt.k), tt.k, len(paramKeys), paramKeys)
+		}
+
+		if !stringSliceEqual(tt.v, paramValues) {
+			t.Errorf("input [%d]: find '%s' expecting paramValues:(%d)%v , got:(%d)%v", i, tt.r, len(tt.v), tt.v, len(paramValues), paramValues)
+		}
+	}
+}
+
+func TestTreeRegexpMatchWholeParam(t *testing.T) {
+	hStub1 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	rctx := NewRouteContext()
+
+	tr := &node{}
+	tr.InsertRoute(mGET, "/{id:[0-9]+}", hStub1)
+	tr.InsertRoute(mGET, "/{x:.+}/foo", hStub1)
+	tr.InsertRoute(mGET, "/{param:[0-9]*}/test", hStub1)
+
+	tests := []struct {
+		expectedHandler http.Handler
+		url             string
+	}{
+		{url: "/13", expectedHandler: hStub1},
+		{url: "/a13", expectedHandler: nil},
+		{url: "/13.jpg", expectedHandler: nil},
+		{url: "/a13.jpg", expectedHandler: nil},
+		{url: "/a/foo", expectedHandler: hStub1},
+		{url: "//foo", expectedHandler: nil},
+		{url: "//test", expectedHandler: hStub1},
+	}
+
+	for _, tc := range tests {
+		_, _, handler := tr.FindRoute(rctx, mGET, tc.url)
+
+		if fmt.Sprintf("%v", tc.expectedHandler) != fmt.Sprintf("%v", handler) {
+			t.Errorf("url %v: expecting handler:%v , got:%v", tc.url, tc.expectedHandler, handler)
+		}
+	}
+}
+
 func debugPrintTree(parent int, i int, n *node, label byte) bool {
 	numEdges := 0
 	for _, nds := range n.child {
