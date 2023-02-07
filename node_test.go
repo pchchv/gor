@@ -394,6 +394,41 @@ func TestTreeRegexpMatchWholeParam(t *testing.T) {
 	}
 }
 
+func TestTreeFindPattern(t *testing.T) {
+	hStub1 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub2 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub3 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+
+	tr := &node{}
+	tr.InsertRoute(mGET, "/pages/*", hStub1)
+	tr.InsertRoute(mGET, "/articles/{id}/*", hStub2)
+	tr.InsertRoute(mGET, "/articles/{slug}/{uid}/*", hStub3)
+
+	if tr.findPattern("/pages") != false {
+		t.Errorf("find /pages failed")
+	}
+
+	if tr.findPattern("/pages*") != false {
+		t.Errorf("find /pages* failed - should be nil")
+	}
+
+	if tr.findPattern("/pages/*") == false {
+		t.Errorf("find /pages/* failed")
+	}
+
+	if tr.findPattern("/articles/{id}/*") == false {
+		t.Errorf("find /articles/{id}/* failed")
+	}
+
+	if tr.findPattern("/articles/{something}/*") == false {
+		t.Errorf("find /articles/{something}/* failed")
+	}
+
+	if tr.findPattern("/articles/{slug}/{uid}/*") == false {
+		t.Errorf("find /articles/{slug}/{uid}/* failed")
+	}
+}
+
 func debugPrintTree(parent int, i int, n *node, label byte) bool {
 	numEdges := 0
 	for _, nds := range n.child {
