@@ -48,6 +48,10 @@ type hijackWriter struct {
 	basicWriter
 }
 
+type flushHijackWriter struct {
+	basicWriter
+}
+
 func (b *basicWriter) WriteHeader(code int) {
 	if !b.wroteHeader {
 		b.code = code
@@ -109,3 +113,19 @@ func (f *hijackWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 }
 
 var _ http.Hijacker = &hijackWriter{}
+
+func (f *flushHijackWriter) Flush() {
+	f.wroteHeader = true
+	fl := f.basicWriter.ResponseWriter.(http.Flusher)
+	fl.Flush()
+}
+
+func (f *flushHijackWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hj := f.basicWriter.ResponseWriter.(http.Hijacker)
+	return hj.Hijack()
+}
+
+var (
+	_ http.Flusher  = &flushHijackWriter{}
+	_ http.Hijacker = &flushHijackWriter{}
+)
