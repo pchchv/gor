@@ -236,11 +236,71 @@ func TestTreeMoar(t *testing.T) {
 	for i, tt := range tests {
 		var handler http.Handler
 		rctx := NewRouteContext()
+		_, handlers, _ := tr.FindRoute(rctx, tt.m, tt.r)
 		paramKeys := rctx.routeParams.Keys
 		paramValues := rctx.routeParams.Values
-		_, handlers, _ := tr.FindRoute(rctx, tt.m, tt.r)
 
 		if methodHandler, ok := handlers[tt.m]; ok {
+			handler = methodHandler.handler
+		}
+
+		if fmt.Sprintf("%v", tt.h) != fmt.Sprintf("%v", handler) {
+			t.Errorf("input [%d]: find '%s' expecting handler:%v , got:%v", i, tt.r, tt.h, handler)
+		}
+
+		if !stringSliceEqual(tt.k, paramKeys) {
+			t.Errorf("input [%d]: find '%s' expecting paramKeys:(%d)%v , got:(%d)%v", i, tt.r, len(tt.k), tt.k, len(paramKeys), paramKeys)
+		}
+
+		if !stringSliceEqual(tt.v, paramValues) {
+			t.Errorf("input [%d]: find '%s' expecting paramValues:(%d)%v , got:(%d)%v", i, tt.r, len(tt.v), tt.v, len(paramValues), paramValues)
+		}
+	}
+}
+
+func TestTreeRegexp(t *testing.T) {
+	hStub1 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub2 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub3 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub4 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub5 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub6 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub7 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+
+	tr := &node{}
+	tr.InsertRoute(mGET, "/articles/{rid:^[0-9]{5,6}}", hStub7)
+	tr.InsertRoute(mGET, "/articles/{zid:^0[0-9]+}", hStub3)
+	tr.InsertRoute(mGET, "/articles/{name:^@[a-z]+}/posts", hStub4)
+	tr.InsertRoute(mGET, "/articles/{op:^[0-9]+}/run", hStub5)
+	tr.InsertRoute(mGET, "/articles/{id:^[0-9]+}", hStub1)
+	tr.InsertRoute(mGET, "/articles/{id:^[1-9]+}-{aux}", hStub6)
+	tr.InsertRoute(mGET, "/articles/{slug}", hStub2)
+
+	tests := []struct {
+		r string       // input request path
+		h http.Handler // output matched handler
+		k []string     // output param keys
+		v []string     // output param values
+	}{
+		{r: "/articles", h: nil, k: []string{}, v: []string{}},
+		{r: "/articles/12345", h: hStub7, k: []string{"rid"}, v: []string{"12345"}},
+		{r: "/articles/123", h: hStub1, k: []string{"id"}, v: []string{"123"}},
+		{r: "/articles/how-to-build-a-router", h: hStub2, k: []string{"slug"}, v: []string{"how-to-build-a-router"}},
+		{r: "/articles/0456", h: hStub3, k: []string{"zid"}, v: []string{"0456"}},
+		{r: "/articles/@pk/posts", h: hStub4, k: []string{"name"}, v: []string{"@pk"}},
+		{r: "/articles/1/run", h: hStub5, k: []string{"op"}, v: []string{"1"}},
+		{r: "/articles/1122", h: hStub1, k: []string{"id"}, v: []string{"1122"}},
+		{r: "/articles/1122-yes", h: hStub6, k: []string{"id", "aux"}, v: []string{"1122", "yes"}},
+	}
+
+	for i, tt := range tests {
+		var handler http.Handler
+		rctx := NewRouteContext()
+		_, handlers, _ := tr.FindRoute(rctx, mGET, tt.r)
+		paramKeys := rctx.routeParams.Keys
+		paramValues := rctx.routeParams.Values
+
+		if methodHandler, ok := handlers[mGET]; ok {
 			handler = methodHandler.handler
 		}
 
