@@ -429,6 +429,19 @@ func TestTreeFindPattern(t *testing.T) {
 	}
 }
 
+func TestWalker(t *testing.T) {
+	r := bigMux()
+
+	err := Walk(r, func(method string, route string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) error {
+		t.Logf("%v %v", method, route)
+
+		return nil
+	})
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func BenchmarkTreeGet(b *testing.B) {
 	h1 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 	h2 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
