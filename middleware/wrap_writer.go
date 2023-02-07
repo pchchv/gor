@@ -66,6 +66,38 @@ type http2FancyWriter struct {
 	basicWriter
 }
 
+// NewWrapResponseWriter wraps http.ResponseWriter, returning a proxy that allows to hook into various parts of the response process.
+func NewWrapResponseWriter(w http.ResponseWriter, protoMajor int) WrapResponseWriter {
+	_, fl := w.(http.Flusher)
+
+	bw := basicWriter{ResponseWriter: w}
+
+	if protoMajor == 2 {
+		_, ps := w.(http.Pusher)
+		if fl && ps {
+			return &http2FancyWriter{bw}
+		}
+	} else {
+		_, hj := w.(http.Hijacker)
+		_, rf := w.(io.ReaderFrom)
+		if fl && hj && rf {
+			return &httpFancyWriter{bw}
+		}
+		if fl && hj {
+			return &flushHijackWriter{bw}
+		}
+		if hj {
+			return &hijackWriter{bw}
+		}
+	}
+
+	if fl {
+		return &flushWriter{bw}
+	}
+
+	return &bw
+}
+
 func (b *basicWriter) WriteHeader(code int) {
 	if !b.wroteHeader {
 		b.code = code
