@@ -429,6 +429,31 @@ func TestTreeFindPattern(t *testing.T) {
 	}
 }
 
+func BenchmarkTreeGet(b *testing.B) {
+	h1 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	h2 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+
+	tr := &node{}
+	tr.InsertRoute(mGET, "/", h1)
+	tr.InsertRoute(mGET, "/ping", h2)
+	tr.InsertRoute(mGET, "/pingall", h2)
+	tr.InsertRoute(mGET, "/ping/{id}", h2)
+	tr.InsertRoute(mGET, "/ping/{id}/woop", h2)
+	tr.InsertRoute(mGET, "/ping/{id}/{opt}", h2)
+	tr.InsertRoute(mGET, "/pinggggg", h2)
+	tr.InsertRoute(mGET, "/hello", h1)
+
+	mctx := NewRouteContext()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		mctx.Reset()
+		tr.FindRoute(mctx, mGET, "/ping/123/456")
+	}
+}
+
 func debugPrintTree(parent int, i int, n *node, label byte) bool {
 	numEdges := 0
 	for _, nds := range n.child {
