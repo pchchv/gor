@@ -148,6 +148,116 @@ func TestTree(t *testing.T) {
 	}
 }
 
+func TestTreeMoar(t *testing.T) {
+	hStub := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub1 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub2 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub3 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub4 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub5 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub6 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub7 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub8 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub9 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub10 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub11 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub12 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub13 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub14 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub15 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	hStub16 := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	tr := &node{}
+
+	tr.InsertRoute(mGET, "/articlefun", hStub5)
+	tr.InsertRoute(mGET, "/articles/{id}", hStub)
+	tr.InsertRoute(mDELETE, "/articles/{slug}", hStub8)
+	tr.InsertRoute(mGET, "/articles/search", hStub1)
+	tr.InsertRoute(mGET, "/articles/{id}:delete", hStub8)
+	tr.InsertRoute(mGET, "/articles/{iidd}!sup", hStub4)
+	tr.InsertRoute(mGET, "/articles/{id}:{op}", hStub3)
+	tr.InsertRoute(mGET, "/articles/{id}:{op}", hStub2)                              // this route sets a new handler for the above route
+	tr.InsertRoute(mGET, "/articles/{slug:^[a-z]+}/posts", hStub)                    // up to tail '/' will only match if contents match the rex
+	tr.InsertRoute(mGET, "/articles/{id}/posts/{pid}", hStub6)                       // /articles/123/posts/1
+	tr.InsertRoute(mGET, "/articles/{id}/posts/{month}/{day}/{year}/{slug}", hStub7) // /articles/123/posts/09/04/1984/juice
+	tr.InsertRoute(mGET, "/articles/{id}.json", hStub10)
+	tr.InsertRoute(mGET, "/articles/{id}/data.json", hStub11)
+	tr.InsertRoute(mGET, "/articles/files/{file}.{ext}", hStub12)
+	tr.InsertRoute(mPUT, "/articles/me", hStub13)
+
+	defer func() {
+		if err := recover(); err == nil {
+			t.Fatal("panic expected")
+		}
+	}()
+	tr.InsertRoute(mGET, "/articles/{id}/{id}", hStub1) // panic expected, we're duplicating param keys
+
+	tr.InsertRoute(mGET, "/pages/*", hStub)
+	tr.InsertRoute(mGET, "/pages/*", hStub9)
+
+	tr.InsertRoute(mGET, "/users/{id}", hStub14)
+	tr.InsertRoute(mGET, "/users/{id}/settings/{key}", hStub15)
+	tr.InsertRoute(mGET, "/users/{id}/settings/*", hStub16)
+
+	tests := []struct {
+		h http.Handler
+		r string
+		k []string
+		v []string
+		m methodType
+	}{
+		{m: mGET, r: "/articles/search", h: hStub1, k: []string{}, v: []string{}},
+		{m: mGET, r: "/articlefun", h: hStub5, k: []string{}, v: []string{}},
+		{m: mGET, r: "/articles/123", h: hStub, k: []string{"id"}, v: []string{"123"}},
+		{m: mDELETE, r: "/articles/123mm", h: hStub8, k: []string{"slug"}, v: []string{"123mm"}},
+		{m: mGET, r: "/articles/789:delete", h: hStub8, k: []string{"id"}, v: []string{"789"}},
+		{m: mGET, r: "/articles/789!sup", h: hStub4, k: []string{"iidd"}, v: []string{"789"}},
+		{m: mGET, r: "/articles/123:sync", h: hStub2, k: []string{"id", "op"}, v: []string{"123", "sync"}},
+		{m: mGET, r: "/articles/456/posts/1", h: hStub6, k: []string{"id", "pid"}, v: []string{"456", "1"}},
+		{m: mGET, r: "/articles/456/posts/09/04/1984/juice", h: hStub7, k: []string{"id", "month", "day", "year", "slug"}, v: []string{"456", "09", "04", "1984", "juice"}},
+		{m: mGET, r: "/articles/456.json", h: hStub10, k: []string{"id"}, v: []string{"456"}},
+		{m: mGET, r: "/articles/456/data.json", h: hStub11, k: []string{"id"}, v: []string{"456"}},
+
+		{m: mGET, r: "/articles/files/file.zip", h: hStub12, k: []string{"file", "ext"}, v: []string{"file", "zip"}},
+		{m: mGET, r: "/articles/files/photos.tar.gz", h: hStub12, k: []string{"file", "ext"}, v: []string{"photos", "tar.gz"}},
+		{m: mGET, r: "/articles/files/photos.tar.gz", h: hStub12, k: []string{"file", "ext"}, v: []string{"photos", "tar.gz"}},
+
+		{m: mPUT, r: "/articles/me", h: hStub13, k: []string{}, v: []string{}},
+		{m: mGET, r: "/articles/me", h: hStub, k: []string{"id"}, v: []string{"me"}},
+		{m: mGET, r: "/pages", h: nil, k: []string{}, v: []string{}},
+		{m: mGET, r: "/pages/", h: hStub9, k: []string{"*"}, v: []string{""}},
+		{m: mGET, r: "/pages/yes", h: hStub9, k: []string{"*"}, v: []string{"yes"}},
+
+		{m: mGET, r: "/users/1", h: hStub14, k: []string{"id"}, v: []string{"1"}},
+		{m: mGET, r: "/users/", h: nil, k: []string{}, v: []string{}},
+		{m: mGET, r: "/users/2/settings/password", h: hStub15, k: []string{"id", "key"}, v: []string{"2", "password"}},
+		{m: mGET, r: "/users/2/settings/", h: hStub16, k: []string{"id", "*"}, v: []string{"2", ""}},
+	}
+
+	for i, tt := range tests {
+		var handler http.Handler
+		rctx := NewRouteContext()
+		paramKeys := rctx.routeParams.Keys
+		paramValues := rctx.routeParams.Values
+		_, handlers, _ := tr.FindRoute(rctx, tt.m, tt.r)
+
+		if methodHandler, ok := handlers[tt.m]; ok {
+			handler = methodHandler.handler
+		}
+
+		if fmt.Sprintf("%v", tt.h) != fmt.Sprintf("%v", handler) {
+			t.Errorf("input [%d]: find '%s' expecting handler:%v , got:%v", i, tt.r, tt.h, handler)
+		}
+
+		if !stringSliceEqual(tt.k, paramKeys) {
+			t.Errorf("input [%d]: find '%s' expecting paramKeys:(%d)%v , got:(%d)%v", i, tt.r, len(tt.k), tt.k, len(paramKeys), paramKeys)
+		}
+
+		if !stringSliceEqual(tt.v, paramValues) {
+			t.Errorf("input [%d]: find '%s' expecting paramValues:(%d)%v , got:(%d)%v", i, tt.r, len(tt.v), tt.v, len(paramValues), paramValues)
+		}
+	}
+}
+
 func debugPrintTree(parent int, i int, n *node, label byte) bool {
 	numEdges := 0
 	for _, nds := range n.child {
