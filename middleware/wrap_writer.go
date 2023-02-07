@@ -37,3 +37,15 @@ type basicWriter struct {
 	bytes       int
 	tee         io.Writer
 }
+
+type flushWriter struct {
+	basicWriter
+}
+
+func (f *flushWriter) Flush() {
+	f.wroteHeader = true
+	fl := f.basicWriter.ResponseWriter.(http.Flusher)
+	fl.Flush()
+}
+
+var _ http.Flusher = &flushWriter{}
