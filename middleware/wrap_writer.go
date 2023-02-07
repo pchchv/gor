@@ -59,6 +59,13 @@ type httpFancyWriter struct {
 	basicWriter
 }
 
+// http2FancyWriter is an HTTP2 writer that additionally satisfies http.Flusher, and io.ReaderFrom.
+// It exists for the common case of the http.ResponseWriter wrapper,
+// which provides an http package to make the proxied object support the full set of proxied object methods.
+type http2FancyWriter struct {
+	basicWriter
+}
+
 func (b *basicWriter) WriteHeader(code int) {
 	if !b.wroteHeader {
 		b.code = code
@@ -148,6 +155,10 @@ func (f *httpFancyWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return hj.Hijack()
 }
 
+func (f *http2FancyWriter) Push(target string, opts *http.PushOptions) error {
+	return f.basicWriter.ResponseWriter.(http.Pusher).Push(target, opts)
+}
+
 func (f *httpFancyWriter) ReadFrom(r io.Reader) (int64, error) {
 	if f.basicWriter.tee != nil {
 		n, err := io.Copy(&f.basicWriter, r)
@@ -164,5 +175,14 @@ func (f *httpFancyWriter) ReadFrom(r io.Reader) (int64, error) {
 var (
 	_ http.Flusher  = &httpFancyWriter{}
 	_ http.Hijacker = &httpFancyWriter{}
+	_ http.Pusher   = &http2FancyWriter{}
 	_ io.ReaderFrom = &httpFancyWriter{}
 )
+
+func (f *http2FancyWriter) Flush() {
+	f.wroteHeader = true
+	fl := f.basicWriter.ResponseWriter.(http.Flusher)
+	fl.Flush()
+}
+
+var _ http.Flusher = &http2FancyWriter{}
