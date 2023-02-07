@@ -52,6 +52,13 @@ type flushHijackWriter struct {
 	basicWriter
 }
 
+// httpFancyWriter is a HTTP writer that additionally satisfies http.Flusher, http.Hijacker, and io.ReaderFrom.
+// It exists for the common case of the http.ResponseWriter wrapper,
+// which provides an http package to make the proxied object support the full set of proxied object methods.
+type httpFancyWriter struct {
+	basicWriter
+}
+
 func (b *basicWriter) WriteHeader(code int) {
 	if !b.wroteHeader {
 		b.code = code
@@ -128,4 +135,34 @@ func (f *flushHijackWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 var (
 	_ http.Flusher  = &flushHijackWriter{}
 	_ http.Hijacker = &flushHijackWriter{}
+)
+
+func (f *httpFancyWriter) Flush() {
+	f.wroteHeader = true
+	fl := f.basicWriter.ResponseWriter.(http.Flusher)
+	fl.Flush()
+}
+
+func (f *httpFancyWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hj := f.basicWriter.ResponseWriter.(http.Hijacker)
+	return hj.Hijack()
+}
+
+func (f *httpFancyWriter) ReadFrom(r io.Reader) (int64, error) {
+	if f.basicWriter.tee != nil {
+		n, err := io.Copy(&f.basicWriter, r)
+		f.basicWriter.bytes += int(n)
+		return n, err
+	}
+	rf := f.basicWriter.ResponseWriter.(io.ReaderFrom)
+	f.basicWriter.maybeWriteHeader()
+	n, err := rf.ReadFrom(r)
+	f.basicWriter.bytes += int(n)
+	return n, err
+}
+
+var (
+	_ http.Flusher  = &httpFancyWriter{}
+	_ http.Hijacker = &httpFancyWriter{}
+	_ io.ReaderFrom = &httpFancyWriter{}
 )
