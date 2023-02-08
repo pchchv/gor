@@ -1,11 +1,14 @@
 package middleware
 
 import (
+	"bufio"
 	"compress/flate"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"net"
+	"net/http"
 	"strings"
 	"sync"
 )
@@ -43,6 +46,23 @@ type EncoderFunc func(w io.Writer, level int) io.Writer
 type ioResetterWriter interface {
 	io.Writer
 	Reset(w io.Writer)
+}
+
+type compressResponseWriter struct {
+	http.ResponseWriter
+
+	// The streaming encoder writer to be used if there is one.
+	// Otherwise, this is just the normal writer.
+	w                io.Writer
+	contentTypes     map[string]struct{}
+	contentWildcards map[string]struct{}
+	encoding         string
+	wroteHeader      bool
+	compressable     bool
+}
+
+type compressFlusher interface {
+	Flush() error
 }
 
 // NewCompressor creates a new Compressor which will handle the encoding responses.
@@ -88,48 +108,57 @@ func NewCompressor(level int, types ...string) *Compressor {
 	return c
 }
 
-// SetEncoder can be used to set the implementation of a compression algorithm.
-func (c *Compressor) SetEncoder(encoding string, fn EncoderFunc) {
-	encoding = strings.ToLower(encoding)
-	if encoding == "" {
-		panic("the encoding can not be empty")
-	}
-	if fn == nil {
-		panic("attempted to set a nil encoder function")
+func (cw *compressResponseWriter) Write(p []byte) (int, error) {
+	if !cw.wroteHeader {
+		cw.WriteHeader(http.StatusOK)
 	}
 
-	// when adding a new encoder that is already registered, the encoder must first be cleared.
-	if _, ok := c.pooledEncoders[encoding]; ok {
-		delete(c.pooledEncoders, encoding)
-	}
-	if _, ok := c.encoders[encoding]; ok {
-		delete(c.encoders, encoding)
-	}
+	return cw.writer().Write(p)
+}
 
-	// if the encoder supports Resetting (IoReseterWriter), then it can be pooled.
-	encoder := fn(ioutil.Discard, c.level)
-	if encoder != nil {
-		if _, ok := encoder.(ioResetterWriter); ok {
-			pool := &sync.Pool{
-				New: func() interface{} {
-					return fn(ioutil.Discard, c.level)
-				},
-			}
-			c.pooledEncoders[encoding] = pool
+func (cw *compressResponseWriter) writer() io.Writer {
+	if cw.compressable {
+		return cw.w
+	} else {
+		return cw.ResponseWriter
+	}
+}
+
+func (cw *compressResponseWriter) Flush() {
+	if f, ok := cw.writer().(http.Flusher); ok {
+		f.Flush()
+	}
+	// If the underlying writer has a compression flush signature,
+	// call this Flush() method instead
+	if f, ok := cw.writer().(compressFlusher); ok {
+		f.Flush()
+
+		// Also flush the underlying response writer
+		if f, ok := cw.ResponseWriter.(http.Flusher); ok {
+			f.Flush()
 		}
 	}
-	// if the encoder is not in the pooledEncoders, add it to the normal encoders.
-	if _, ok := c.pooledEncoders[encoding]; !ok {
-		c.encoders[encoding] = fn
-	}
+}
 
-	for i, v := range c.encodingPrecedence {
-		if v == encoding {
-			c.encodingPrecedence = append(c.encodingPrecedence[:i], c.encodingPrecedence[i+1:]...)
-		}
+func (cw *compressResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hj, ok := cw.writer().(http.Hijacker); ok {
+		return hj.Hijack()
 	}
+	return nil, nil, errors.New("chi/middleware: http.Hijacker is unavailable on the writer")
+}
 
-	c.encodingPrecedence = append([]string{encoding}, c.encodingPrecedence...)
+func (cw *compressResponseWriter) Push(target string, opts *http.PushOptions) error {
+	if ps, ok := cw.writer().(http.Pusher); ok {
+		return ps.Push(target, opts)
+	}
+	return errors.New("chi/middleware: http.Pusher is unavailable on the writer")
+}
+
+func (cw *compressResponseWriter) Close() error {
+	if c, ok := cw.writer().(io.WriteCloser); ok {
+		return c.Close()
+	}
+	return errors.New("chi/middleware: io.WriteCloser is unavailable on the writer")
 }
 
 func encoderGzip(w io.Writer, level int) io.Writer {
@@ -146,4 +175,13 @@ func encoderDeflate(w io.Writer, level int) io.Writer {
 		return nil
 	}
 	return dw
+}
+
+func matchAcceptEncoding(accepted []string, encoding string) bool {
+	for _, v := range accepted {
+		if strings.Contains(v, encoding) {
+			return true
+		}
+	}
+	return false
 }
