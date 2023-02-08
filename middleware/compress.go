@@ -205,6 +205,53 @@ func (c *Compressor) selectEncoder(h http.Header, w io.Writer) (io.Writer, strin
 	return nil, "", func() {}
 }
 
+func (cw *compressResponseWriter) isCompressable() bool {
+	// Parse the first part of the Content-Type response header.
+	contentType := cw.Header().Get("Content-Type")
+	if idx := strings.Index(contentType, ";"); idx >= 0 {
+		contentType = contentType[0:idx]
+	}
+
+	// Is the content type compressable?
+	if _, ok := cw.contentTypes[contentType]; ok {
+		return true
+	}
+	if idx := strings.Index(contentType, "/"); idx > 0 {
+		contentType = contentType[0:idx]
+		_, ok := cw.contentWildcards[contentType]
+		return ok
+	}
+	return false
+}
+
+func (cw *compressResponseWriter) WriteHeader(code int) {
+	if cw.wroteHeader {
+		cw.ResponseWriter.WriteHeader(code) // Allow multiple calls to propagate.
+		return
+	}
+	cw.wroteHeader = true
+	defer cw.ResponseWriter.WriteHeader(code)
+
+	// Already compressed data?
+	if cw.Header().Get("Content-Encoding") != "" {
+		return
+	}
+
+	if !cw.isCompressable() {
+		cw.compressable = false
+		return
+	}
+
+	if cw.encoding != "" {
+		cw.compressable = true
+		cw.Header().Set("Content-Encoding", cw.encoding)
+		cw.Header().Add("Vary", "Accept-Encoding")
+
+		// The content-length after compression is unknown
+		cw.Header().Del("Content-Length")
+	}
+}
+
 func (cw *compressResponseWriter) Write(p []byte) (int, error) {
 	if !cw.wroteHeader {
 		cw.WriteHeader(http.StatusOK)
