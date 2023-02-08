@@ -108,6 +108,103 @@ func NewCompressor(level int, types ...string) *Compressor {
 	return c
 }
 
+// SetEncoder can be used to set the implementation of a compression algorithm.
+func (c *Compressor) SetEncoder(encoding string, fn EncoderFunc) {
+	encoding = strings.ToLower(encoding)
+	if encoding == "" {
+		panic("the encoding can not be empty")
+	}
+	if fn == nil {
+		panic("attempted to set a nil encoder function")
+	}
+
+	// when adding a new encoder that is already registered, the encoder must first be cleared.
+	if _, ok := c.pooledEncoders[encoding]; ok {
+		delete(c.pooledEncoders, encoding)
+	}
+	if _, ok := c.encoders[encoding]; ok {
+		delete(c.encoders, encoding)
+	}
+
+	// if the encoder supports Resetting (IoReseterWriter), then it can be pooled.
+	encoder := fn(io.Discard, c.level)
+	if encoder != nil {
+		if _, ok := encoder.(ioResetterWriter); ok {
+			pool := &sync.Pool{
+				New: func() interface{} {
+					return fn(io.Discard, c.level)
+				},
+			}
+			c.pooledEncoders[encoding] = pool
+		}
+	}
+	// if the encoder is not in the pooledEncoders, add it to the normal encoders.
+	if _, ok := c.pooledEncoders[encoding]; !ok {
+		c.encoders[encoding] = fn
+	}
+
+	for i, v := range c.encodingPrecedence {
+		if v == encoding {
+			c.encodingPrecedence = append(c.encodingPrecedence[:i], c.encodingPrecedence[i+1:]...)
+		}
+	}
+
+	c.encodingPrecedence = append([]string{encoding}, c.encodingPrecedence...)
+}
+
+// Handler returns a new middleware that will compress the response based on the current Compressor.
+func (c *Compressor) Handler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		encoder, encoding, cleanup := c.selectEncoder(r.Header, w)
+
+		cw := &compressResponseWriter{
+			ResponseWriter:   w,
+			w:                w,
+			contentTypes:     c.allowedTypes,
+			contentWildcards: c.allowedWildcards,
+			encoding:         encoding,
+			compressable:     false, // determined in post-handler
+		}
+		if encoder != nil {
+			cw.w = encoder
+		}
+		// add the encoder to the pool if applicable.
+		defer cleanup()
+		defer cw.Close()
+
+		next.ServeHTTP(cw, r)
+	})
+}
+
+// selectEncoder returns the encoder, the name of the encoder, and a closer function.
+func (c *Compressor) selectEncoder(h http.Header, w io.Writer) (io.Writer, string, func()) {
+	header := h.Get("Accept-Encoding")
+
+	// parse the names of all accepted algorithms from the header.
+	accepted := strings.Split(strings.ToLower(header), ",")
+
+	// find supported encoder by accepted list by precedence
+	for _, name := range c.encodingPrecedence {
+		if matchAcceptEncoding(accepted, name) {
+			if pool, ok := c.pooledEncoders[name]; ok {
+				encoder := pool.Get().(ioResetterWriter)
+				cleanup := func() {
+					pool.Put(encoder)
+				}
+				encoder.Reset(w)
+				return encoder, name, cleanup
+
+			}
+			if fn, ok := c.encoders[name]; ok {
+				return fn(w, c.level), name, func() {}
+			}
+		}
+	}
+
+	// no encoder found to match the accepted encoding
+	return nil, "", func() {}
+}
+
 func (cw *compressResponseWriter) Write(p []byte) (int, error) {
 	if !cw.wroteHeader {
 		cw.WriteHeader(http.StatusOK)
@@ -159,6 +256,17 @@ func (cw *compressResponseWriter) Close() error {
 		return c.Close()
 	}
 	return errors.New("chi/middleware: io.WriteCloser is unavailable on the writer")
+}
+
+// Compress is a middleware that compresses response body of a given content types to a data format based
+// on Accept-Encoding request header. It uses a given compression level.
+// NOTE: Be sure to set the Content-Type header on your response,
+// otherwise this middleware will not compress the response body.
+// For example, you must set w.Header().Set("Content-Type", http.DetectContentType(yourBody)) in the handler or set it manually.
+// Passing a compression level of 5 is reasonable value.
+func Compress(level int, types ...string) func(next http.Handler) http.Handler {
+	compressor := NewCompressor(level, types...)
+	return compressor.Handler
 }
 
 func encoderGzip(w io.Writer, level int) io.Writer {
