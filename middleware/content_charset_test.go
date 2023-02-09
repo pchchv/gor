@@ -18,7 +18,7 @@ func TestContentCharset(t *testing.T) {
 		want                int
 	}{
 		{
-			"should accept requests with a matgorng charset",
+			"should accept requests with a matching charset",
 			"application/json; charset=UTF-8",
 			[]string{"UTF-8"},
 			http.StatusOK,
@@ -30,13 +30,13 @@ func TestContentCharset(t *testing.T) {
 			http.StatusOK,
 		},
 		{
-			"should accept requests with a matgorng charset with extra values",
+			"should accept requests with a matching charset with extra values",
 			"application/json; foo=bar; charset=UTF-8; spam=eggs",
 			[]string{"UTF-8"},
 			http.StatusOK,
 		},
 		{
-			"should accept requests with a matgorng charset when multiple charsets are supported",
+			"should accept requests with a matching charset when multiple charsets are supported",
 			"text/xml; charset=UTF-8",
 			[]string{"UTF-8", "Latin-1"},
 			http.StatusOK,
@@ -54,13 +54,13 @@ func TestContentCharset(t *testing.T) {
 			http.StatusUnsupportedMediaType,
 		},
 		{
-			"should not accept requests with a mismatgorng charset",
+			"should not accept requests with a mismatching charset",
 			"text/plain; charset=Latin-1",
 			[]string{"UTF-8"},
 			http.StatusUnsupportedMediaType,
 		},
 		{
-			"should not accept requests with a mismatgorng charset even if empty charsets are allowed",
+			"should not accept requests with a mismatching charset even if empty charsets are allowed",
 			"text/plain; charset=Latin-1",
 			[]string{"UTF-8", ""},
 			http.StatusUnsupportedMediaType,
