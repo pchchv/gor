@@ -1,5 +1,6 @@
 # **gor examples**
 
+* [hello-world](https://github.com/pchchv/gor/examples/hello-world/main.go) - Hello World!
 
 ##### Read `<example>/main.go` source to learn how service works and read comments for usage
 
