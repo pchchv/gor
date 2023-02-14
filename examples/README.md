@@ -1,6 +1,6 @@
 # **gor examples**
 
-* [hello-world](https://github.com/pchchv/gor/blob/main/examples/hello-world/main.go) - Hello World!
+* [hello_world](https://github.com/pchchv/gor/blob/main/examples/hello_world/main.go) - Hello World!
 * [logging](https://github.com/pchchv/gor/blob/main/examples/logging/main.go) - Easy structured logging for any backend
 * [fileserver](https://github.com/pchchv/gor/blob/main/examples/fileserver/main.go) - Easily serve static files
 * [custom_handler](https://github.com/pchchv/gor/blob/main/examples/custom_handler/main.go) - Use a custom handler function signature
