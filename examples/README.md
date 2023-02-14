@@ -1,6 +1,7 @@
 # **gor examples**
 
 * [hello-world](https://github.com/pchchv/gor/examples/hello-world/main.go) - Hello World!
+* [logging](https://github.com/pchchv/gor/examples/logging/main.go) - Easy structured logging for any backend
 
 ##### Read `<example>/main.go` source to learn how service works and read comments for usage
 
