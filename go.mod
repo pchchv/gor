@@ -1,6 +1,6 @@
 module github.com/pchchv/gor
 
-go 1.19
+go 1.20
 
 require (
 	github.com/pchchv/golog v1.0.1

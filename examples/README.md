@@ -2,6 +2,7 @@
 
 * [hello-world](https://github.com/pchchv/gor/examples/hello-world/main.go) - Hello World!
 * [logging](https://github.com/pchchv/gor/examples/logging/main.go) - Easy structured logging for any backend
+* [fileserver](https://github.com/pchchv/gor/examples/fileserver/main.go) - Easily serve static files
 
 ##### Read `<example>/main.go` source to learn how service works and read comments for usage
 
