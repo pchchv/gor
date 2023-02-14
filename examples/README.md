@@ -8,6 +8,7 @@
 * [limits](https://github.com/pchchv/gor/blob/main/examples/limits/main.go) — Timeouts and Throttling
 * [graceful](https://github.com/pchchv/gor/blob/main/examples/graceful/main.go) — Graceful context signaling and server shutdown
 * [walk](https://github.com/pchchv/gor/blob/main/examples/walk/main.go) — Print to stdout a router's routes
+* [todos_resource](https://github.com/pchchv/gor/blob/main/examples/todos_resource/main.go) — Struct routers/handlers, an example of another code layout style
 
 ##### Read `<example>/main.go` source to learn how service works and read comments for usage
 
