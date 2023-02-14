@@ -5,6 +5,7 @@
 * [fileserver](https://github.com/pchchv/gor/blob/main/examples/fileserver/main.go) — Easily serve static files
 * [custom_handler](https://github.com/pchchv/gor/blob/main/examples/custom_handler/main.go) — Use a custom handler function signature
 * [custom_method](https://github.com/pchchv/gor/blob/main/examples/custom_method/main.go) — Add a custom HTTP method
+* [limits](https://github.com/pchchv/gor/blob/main/examples/limits/main.go) — Timeouts and Throttling
 
 ##### Read `<example>/main.go` source to learn how service works and read comments for usage
 
